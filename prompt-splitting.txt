@@ -1,0 +1,72 @@
+【MiniMax 朗读结构规则】
+你正常回复用户的正文必须放在前面。每次回复都在正常正文最后追加下面的结构块；推荐使用 HTML 注释包裹结构块：从 `{{OPEN_MARKER}}` 开始，以 `{{CLOSE_MARKER}}` 结束。旧格式从 `[[MINIMAX_TTS]]` 开始、以 `[[/MINIMAX_TTS]]` 结束，也可以兼容使用。结构块之外不要再写解释。
+
+推荐使用 HTML 注释包住结构块，这样正文不会显示结构内容：结构块从 `{{OPEN_MARKER}}` 开始，以 `{{CLOSE_MARKER}}` 结束。旧格式 `[[MINIMAX_TTS]]...[[/MINIMAX_TTS]]` 也兼容。结构块里面只能放一个严格有效的 JSON 数组。数组中的每条记录必须恰好包含：role_name、text_content、emotion_name、strength_name、minimax_segments。
+
+role_name 只能使用：旁白、主角、女主、男NPC、女NPC、未知角色。
+主角、男主、男主姓名对应的对白必须使用“主角”，绝不能使用“男NPC”。女主姓名对应的对白使用“女主”。只有无法绑定到主角或女主的男性角色才使用“男NPC”。
+
+若系统设定或历史上下文已明确主角/女主姓名，对白必须按姓名绑定到“主角”或“女主”，不要因为一时称呼变化改成男NPC/女NPC。过滤代码、HTML、状态栏、变量更新、Analysis、UpdateVariable、StatusPlaceHolderImpl 和 [[INSIDE]] 控制区块，这些内容不进入朗读结构。
+
+旁白必须是纯文本朗读（旁白不能自动获得情绪）：旁白 text 的 emotion 永远是 null，旁白 emotion_name 永远是空字符串，旁白不能添加 sound 或 pause。旁白中的“她笑了/笑出声”“她咳嗽”“她叹气”等动作文字必须原样保留，但不能把这些动作变成旁白语气，也不能因为“开心、伤心、温柔”等叙述给旁白加情绪。strength_name 永远是空字符串。
+
+每条 minimax_segments 至少有一个 text 片段。text 片段必须包含 emotion；没有明确情绪时写 null。sound 和 pause 不进入 text_content。所有 text.text 按顺序拼接后，必须和对应 text_content 完全一致。所有记录的 text_content 按顺序拼接后，必须和正文完全一致，只允许去掉直接对白最外层引号，以及去掉不朗读的成对 Markdown 加粗标记 **；标题文字、标点和换行必须保留。
+
+【正文、排版和结构块的边界】
+朗读结构块只是给播放器读取的机器数据，不能反过来修改正常正文、剧情、人设、语气或角色关系。先正常完成正文，再在正文末尾追加结构块；不要把 role_name、emotion、sound、pause、JSON、HTML 注释或“旁白/女主/男NPC”等内部字段写进正文。正文里的 Markdown 加粗只属于显示排版：如果正文是 **【时间地点】**，结构 JSON 的 text_content 和 text.text 应写成 【时间地点】，不能把两侧的 ** 当作要朗读的文字；除去这对加粗标记后，正文中的所有可见文字、标点和换行都必须原样保留。
+
+emotion 只能是 happy、sad、angry、fearful、disgusted、surprised、calm 或 null。emotion_name 只能是高兴、伤心、生气、害怕、厌恶、惊喜、平静或空字符串。strength_name 永远是空字符串。
+
+声音标签只能从下面这 19 个插件支持的标签中选择：
+emm、laughs、chuckle、humming、coughs、clear-throat、breath、inhale、exhale、pant、sighs、gasps、sniffs、groans、burps、lip-smacking、sneezes、snorts、hissing。
+
+请结合已经完成的正文、对白含义、人物状态和场景气氛，自然选择合适的声音标签，让朗读更有语气变化。不要因为正文没有明确写出“笑了”“咳嗽”“叹气”等动作，就把所有对白都处理成没有声音变化；轻松打趣可以用 chuckle，明显笑声可以用 laughs，无奈或释然可以用 sighs，尴尬开口可以用 clear-throat，需要轻微呼吸感时可以用 breath、inhale 或 exhale，惊讶反应可以用 gasps。标签只影响朗读表现，不得反过来修改正文、补写动作、改变人设或增加角色。不要为了凑数量强行添加，也不要每句话固定添加。
+
+旁白永远只保留普通 text；对白可以根据场景自然使用上述标签，不要求旁白提前写出对应动作。声音标签不等于 emotion，不要因为使用 laughs 或 chuckle 就自动设置 happy，也不要因为使用 sighs 就自动设置 sad。停顿只在原文明确要求额外停顿时添加；不得为了丰富效果凭空添加 pause。
+
+【示例一：没有特殊情绪】
+正文：她轻轻点头：“好，我们现在出发。”
+结构块：
+{{OPEN_MARKER}}
+[{"role_name":"旁白","text_content":"她轻轻点头：","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"她轻轻点头：","emotion":null}]},{"role_name":"女主","text_content":"好，我们现在出发。","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"好，我们现在出发。","emotion":null}]}]
+{{CLOSE_MARKER}}
+
+【示例二：主角和女主】
+系统设定：主角姓名是林墨，女主姓名是苏倩。
+正文：林墨看向苏倩：“别怕。”苏倩低声回答：“我没事。”
+结构块：
+{{OPEN_MARKER}}
+[{"role_name":"旁白","text_content":"林墨看向苏倩：","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"林墨看向苏倩：","emotion":null}]},{"role_name":"主角","text_content":"别怕。","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"别怕。","emotion":null}]},{"role_name":"旁白","text_content":"苏倩低声回答：","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"苏倩低声回答：","emotion":null}]},{"role_name":"女主","text_content":"我没事。","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"我没事。","emotion":null}]}]
+{{CLOSE_MARKER}}
+
+【示例三：明确情绪】
+正文：林墨生气地说：“别逞强！”
+结构块：
+{{OPEN_MARKER}}
+[{"role_name":"旁白","text_content":"林墨生气地说：","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"林墨生气地说：","emotion":null}]},{"role_name":"主角","text_content":"别逞强！","emotion_name":"生气","strength_name":"","minimax_segments":[{"type":"text","text":"别逞强！","emotion":"angry"}]}]
+{{CLOSE_MARKER}}
+
+【示例四：旁白写出笑声动作，语气放在对白】
+正文：她笑出了声：“你还真敢选十回。”
+结构块：
+{{OPEN_MARKER}}
+[{"role_name":"旁白","text_content":"她笑出了声：","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"她笑出了声：","emotion":null}]},{"role_name":"女主","text_content":"你还真敢选十回。","emotion_name":"","strength_name":"","minimax_segments":[{"type":"sound","tag":"chuckle"},{"type":"text","text":"你还真敢选十回。","emotion":null}]}]
+{{CLOSE_MARKER}}
+
+【示例五：旁白写出情绪，但不把情绪给旁白】
+正文：她开心地看着苏泉：“好啊。”
+结构块：
+{{OPEN_MARKER}}
+[{"role_name":"旁白","text_content":"她开心地看着苏泉：","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"她开心地看着苏泉：","emotion":null}]},{"role_name":"女主","text_content":"好啊。","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"好啊。","emotion":null}]}]
+{{CLOSE_MARKER}}
+
+【示例六：加粗标题、换行和对白引号】
+正文：
+**【2026.9.8 周二·中午12点15分·湿地公园林荫道】**
+
+她抬眼：“嗯。”
+结构块：
+{{OPEN_MARKER}}
+[{"role_name":"旁白","text_content":"【2026.9.8 周二·中午12点15分·湿地公园林荫道】\n\n她抬眼：","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"【2026.9.8 周二·中午12点15分·湿地公园林荫道】\n\n她抬眼：","emotion":null}]},{"role_name":"女主","text_content":"嗯。","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"嗯。","emotion":null}]}]
+{{CLOSE_MARKER}}
+说明：JSON 字符串中用 \n 表示一次换行，用 \n\n 表示空一行；不要写成 \\n（那会变成反斜杠和字母 n），也不要在 JSON 字符串内部直接换行。这个例子不把标题两侧的 ** 写进 JSON；【时间地点】、空行、她抬眼：和嗯。都必须保留。对白最外层的“”只作为说话边界，可以不写进对应 text_content。

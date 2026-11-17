@@ -14,6 +14,31 @@ export const DEFAULT_PROMPT = [
     '结构块应使用以下形状：[{\"role_name\":\"旁白\",\"text_content\":\"原文\",\"emotion_name\":\"\",\"strength_name\":\"\",\"minimax_segments\":[{\"type\":\"text\",\"text\":\"原文\",\"emotion\":null}]}]'
 ].join('\n');
 
+export function migratePromptSettings(settings, stored, defaults, legacyDefault) {
+    const source = stored || {};
+    const hasSplit = Object.prototype.hasOwnProperty.call(source, 'promptSplit');
+    const hasPerformance = Object.prototype.hasOwnProperty.call(source, 'promptPerformance');
+    const legacy = String(source.prompt || '').trim();
+
+    if (!(Number(source.promptMigrationVersion) >= 1)) {
+        if (!hasSplit && !hasPerformance) {
+            settings.promptSplit = legacy && legacy !== legacyDefault ? legacy : defaults.split;
+            settings.promptPerformance = defaults.performance;
+        } else {
+            if (!hasSplit) settings.promptSplit = defaults.split;
+            if (!hasPerformance) settings.promptPerformance = defaults.performance;
+            if (!String(settings.promptSplit || '').trim() && !String(settings.promptPerformance || '').trim()) {
+                settings.promptSplit = legacy && legacy !== legacyDefault ? legacy : defaults.split;
+                settings.promptPerformance = defaults.performance;
+            }
+        }
+        settings.promptMigrationVersion = 1;
+    }
+
+    settings.prompt = [settings.promptSplit, settings.promptPerformance].filter(Boolean).join('\n\n');
+    return settings;
+}
+
 const BLOCK_PATTERNS = [
     /<!--\s*MINIMAX_TTS\b[\s\S]*?-->/gi,
     /\[\[MINIMAX_TTS\]\][\s\S]*?\[\[\/MINIMAX_TTS\]\]/gi
@@ -24,6 +49,12 @@ const SOUND_TAGS = new Set([
     'inhale', 'exhale', 'pant', 'sighs', 'gasps', 'sniffs', 'groans', 'burps',
     'lip-smacking', 'sneezes', 'snorts', 'hissing'
 ]);
+const EMOTIONS = new Set(['happy', 'sad', 'angry', 'fearful', 'disgusted', 'surprised', 'calm']);
+const EMOTION_NAMES = {
+    '高兴': 'happy', '开心': 'happy', '伤心': 'sad', '悲伤': 'sad',
+    '生气': 'angry', '愤怒': 'angry', '害怕': 'fearful', '恐惧': 'fearful',
+    '厌恶': 'disgusted', '惊喜': 'surprised', '平静': 'calm'
+};
 
 function allMatches(regex, text) {
     const matches = [];
@@ -71,47 +102,127 @@ export function getActiveReplyText(message) {
     return '';
 }
 
-function parseRows(raw) {
-    let rows;
+function parseJsonValue(raw) {
+    const source = String(raw ?? '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     try {
-        rows = JSON.parse(raw);
-    } catch {
-        return null;
-    }
-    if (!Array.isArray(rows) || !rows.length || rows.length > 1000) return null;
+        return JSON.parse(source);
+    } catch {}
 
-    for (const row of rows) {
-        if (!row || typeof row !== 'object' ||
-            typeof row.role_name !== 'string' ||
-            typeof row.text_content !== 'string' ||
-            !Array.isArray(row.minimax_segments)) return null;
-
-        let joinedText = '';
-        for (const part of row.minimax_segments) {
-            if (!part || typeof part !== 'object') return null;
-            if (part.type === 'text') {
-                if (typeof part.text !== 'string' ||
-                    !(part.emotion === null || typeof part.emotion === 'string')) return null;
-                joinedText += part.text;
-            } else if (part.type === 'sound') {
-                if (!SOUND_TAGS.has(part.tag)) return null;
-            } else if (part.type === 'pause') {
-                if (!Number.isFinite(part.seconds) || part.seconds < 0.01 || part.seconds > 99.99) return null;
-            } else {
-                return null;
+    for (let start = 0; start < source.length; start++) {
+        if (source[start] !== '[' && source[start] !== '{') continue;
+        const stack = [];
+        let quoted = false;
+        let escaped = false;
+        for (let end = start; end < source.length; end++) {
+            const char = source[end];
+            if (quoted) {
+                if (escaped) escaped = false;
+                else if (char === '\\') escaped = true;
+                else if (char === '"') quoted = false;
+                continue;
+            }
+            if (char === '"') quoted = true;
+            else if (char === '[' || char === '{') stack.push(char);
+            else if (char === ']' || char === '}') {
+                const opener = stack.pop();
+                if ((char === ']' && opener !== '[') || (char === '}' && opener !== '{')) break;
+                if (!stack.length) {
+                    try { return JSON.parse(source.slice(start, end + 1)); } catch { break; }
+                }
             }
         }
-        if (joinedText !== row.text_content) return null;
     }
-    return rows;
+    return null;
+}
+
+function normalizeRole(value) {
+    const role = String(value ?? '').trim().toLowerCase().replace(/[\s_-]/g, '');
+    if (['旁白', 'narrator', 'narration'].includes(role)) return '旁白';
+    if (['主角', '男主', '男主角', 'protagonist', 'hero'].includes(role)) return '主角';
+    if (['女主', '女主角', 'heroine'].includes(role)) return '女主';
+    if (['男npc', '男性npc', 'malenpc'].includes(role)) return '男NPC';
+    if (['女npc', '女性npc', 'femalenpc'].includes(role)) return '女NPC';
+    if (role === '未知角色' || role === 'unknown' || role === 'unknownspeaker') return '未知角色';
+    return '未知角色';
+}
+
+function normalizeEmotion(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const emotion = String(value).trim().toLowerCase();
+    if (EMOTIONS.has(emotion)) return emotion;
+    return EMOTION_NAMES[String(value).trim()] || null;
+}
+
+function normalizeRows(raw) {
+    const parsed = parseJsonValue(raw);
+    const rows = Array.isArray(parsed) ? parsed : (parsed && typeof parsed === 'object' ? [parsed] : null);
+    if (!rows?.length || rows.length > 1000) return null;
+
+    const normalized = [];
+    for (const source of rows) {
+        if (typeof source !== 'string' && (!source || typeof source !== 'object')) continue;
+        const row = typeof source === 'string' ? { text_content: source } : source;
+        const role = normalizeRole(row.role_name ?? row.role ?? row.speaker ?? row.speaker_name ?? row.name ?? row.roleName);
+        const rawSegments = row.minimax_segments ?? row.segments ?? row.parts ?? row.items;
+        let parts = Array.isArray(rawSegments) ? rawSegments : [];
+        if (typeof rawSegments === 'string') {
+            const parsedParts = parseJsonValue(rawSegments);
+            parts = Array.isArray(parsedParts) ? parsedParts : [{ type: 'text', text: rawSegments }];
+        }
+
+        const segments = [];
+        for (const sourcePart of parts) {
+            const part = typeof sourcePart === 'string' ? { type: 'text', text: sourcePart } : sourcePart;
+            if (!part || typeof part !== 'object') continue;
+            const type = String(part.type ?? part.kind ?? '').trim().toLowerCase();
+            const text = part.text ?? part.content ?? part.value;
+            if (type === 'text' || (!type && text !== undefined)) {
+                const content = String(text ?? '');
+                if (content) segments.push({ type: 'text', text: content, emotion: role === '旁白' ? null : normalizeEmotion(part.emotion ?? part.emotion_name ?? part.emotionName) });
+            } else if ((type === 'sound' || type === 'audio') && role !== '旁白') {
+                const tag = String(part.tag ?? part.sound ?? part.value ?? '').trim();
+                if (SOUND_TAGS.has(tag)) segments.push({ type: 'sound', tag });
+            } else if ((type === 'pause' || type === 'break') && role !== '旁白') {
+                const seconds = Number(part.seconds ?? part.duration ?? part.value);
+                if (Number.isFinite(seconds) && seconds >= 0.01 && seconds <= 99.99) segments.push({ type: 'pause', seconds });
+            }
+        }
+
+        const derivedText = segments.filter(part => part.type === 'text').map(part => part.text).join('');
+        const declaredText = row.text_content ?? row.text ?? row.content ?? row.utterance ?? '';
+        if (derivedText && declaredText && derivedText !== String(declaredText)) return null;
+        const textContent = derivedText || String(declaredText);
+        if (!textContent) continue;
+        if (!segments.some(part => part.type === 'text')) {
+            segments.unshift({ type: 'text', text: textContent, emotion: null });
+        }
+        normalized.push({
+            role_name: role,
+            text_content: segments.filter(part => part.type === 'text').map(part => part.text).join(''),
+            emotion_name: String(row.emotion_name ?? row.emotion ?? row.emotionName ?? ''),
+            strength_name: '',
+            minimax_segments: segments
+        });
+    }
+    if (!normalized.length) return null;
+    return normalized;
+}
+
+function comparableReadingText(value) {
+    return String(value)
+        .replace(/(?<!\*)\*\*(?!\*)(\S(?:[^*\n]*?\S)?)\*\*(?!\*)/g, '$1')
+        .replace(/[\s"“”「」『』]/g, '');
 }
 
 export function extractReading(value) {
     const source = String(value ?? '');
     const block = extractRawBlock(source);
-    const rows = block ? parseRows(block.raw) : null;
     const clean = stripReadingBlocks(source).trimEnd();
-    return { rows, clean, readable: clean };
+    let rows = block ? normalizeRows(block.raw) : null;
+    if (rows && comparableReadingText(rows.map(row => row.text_content).join('')) !== comparableReadingText(clean)) {
+        rows = null;
+    }
+    return { rows, clean, readable: clean, hasStructureBlock: Boolean(block) };
 }
 
 export function sanitizeReadableText(value) {
@@ -138,6 +249,11 @@ export function splitSentences(value) {
         let end = i + 1;
         if (/[。！？!?…]/u.test(char) || char === '.') {
             while (end < text.length && /[。！？!?…\.]/u.test(text[end])) end++;
+        }
+        while (text[end] === '(') {
+            const close = text.indexOf(')', end + 1);
+            if (close < 0 || !SOUND_TAGS.has(text.slice(end + 1, close))) break;
+            end = close + 1;
         }
         const chunk = text.slice(start, end).trim();
         if (chunk) chunks.push(chunk);
@@ -191,7 +307,8 @@ function textChunksForRow(row) {
             current = null;
             chunks.push({ type: 'pause', seconds: part.seconds });
         } else if (part.type === 'sound') {
-            pendingSound += '(' + part.tag + ')';
+            if (current) current.text += '(' + part.tag + ')';
+            else pendingSound += '(' + part.tag + ')';
         } else if (part.type === 'text') {
             if (current && current.emotion === part.emotion) {
                 current.text += pendingSound + part.text;
@@ -269,6 +386,66 @@ export function makeAudioRequestBody(settings, segment) {
     };
 }
 
+function segmentDurationWeight(segment, settings) {
+    if (segment?.type === 'pause') return Math.max(0, Number(segment.seconds) || 0);
+    const characters = Math.max(1, Array.from(String(segment?.text ?? '').replace(/\s/g, '')).length);
+    const speed = Number(segment?.speed ?? (segment?.kind === 'dialogue' ? settings.dialogueSpeed : settings.speed)) || 1;
+    return characters / Math.max(0.1, speed);
+}
+
+export function buildTimeline(segments, measuredDurations = [], settings = {}) {
+    let knownDuration = 0;
+    let knownWeight = 0;
+    for (let index = 0; index < segments.length; index++) {
+        if (segments[index]?.type === 'pause') continue;
+        const duration = Number(measuredDurations[index]);
+        if (Number.isFinite(duration) && duration > 0) {
+            knownDuration += duration;
+            knownWeight += segmentDurationWeight(segments[index], settings);
+        }
+    }
+    const secondsPerWeight = knownWeight > 0 ? knownDuration / knownWeight : 0.22;
+    const durations = segments.map((segment, index) => {
+        if (segment?.type === 'pause') return Math.max(0, Number(segment.seconds) || 0);
+        const measured = Number(measuredDurations[index]);
+        return Number.isFinite(measured) && measured > 0
+            ? measured
+            : Math.max(0.6, segmentDurationWeight(segment, settings) * secondsPerWeight);
+    });
+    return {
+        durations,
+        total: durations.reduce((sum, duration) => sum + duration, 0),
+        complete: segments.length > 0 && segments.every((segment, index) =>
+            segment?.type === 'pause' || (Number.isFinite(Number(measuredDurations[index])) && Number(measuredDurations[index]) > 0))
+    };
+}
+
+export function timelinePosition(timeline, index, elapsedSeconds) {
+    const safeIndex = Math.max(0, Math.min(Number(index) || 0, Math.max(0, timeline.durations.length - 1)));
+    const before = timeline.durations.slice(0, safeIndex).reduce((sum, duration) => sum + duration, 0);
+    const duration = timeline.durations[safeIndex] || 0;
+    const current = Math.min(timeline.total, before + Math.max(0, Math.min(Number(elapsedSeconds) || 0, duration)));
+    return { ...timeline, current, progress: timeline.total > 0 ? current / timeline.total * 100 : 0 };
+}
+
+export function timelineTarget(timeline, percent) {
+    const current = Math.max(0, Math.min(timeline.total, timeline.total * (Number(percent) / 100)));
+    let before = 0;
+    for (let index = 0; index < timeline.durations.length; index++) {
+        const duration = timeline.durations[index];
+        if (current < before + duration || index === timeline.durations.length - 1) {
+            return {
+                ...timeline,
+                current,
+                index,
+                offset: Math.max(0, Math.min(duration, current - before))
+            };
+        }
+        before += duration;
+    }
+    return { ...timeline, current: 0, index: 0, offset: 0 };
+}
+
 function raceAbort(promise, signal) {
     if (!signal) return promise;
     if (signal.aborted) return Promise.reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
@@ -301,7 +478,8 @@ export async function playInOrder(items, load, play, options = {}) {
         promise.catch(() => {});
         return { promise, resolve, reject };
     });
-    let next = 0;
+    const startIndex = Math.max(0, Math.min(items.length, Math.floor(Number(options.startIndex) || 0)));
+    let next = startIndex;
     let active = 0;
     let failure = null;
 
@@ -335,7 +513,7 @@ export async function playInOrder(items, load, play, options = {}) {
     };
 
     pump();
-    for (let index = 0; index < items.length; index++) {
+    for (let index = startIndex; index < items.length; index++) {
         const value = await raceAbort(slots[index].promise, signal);
         try {
             await raceAbort(Promise.resolve(play(value, items[index], index)), signal);

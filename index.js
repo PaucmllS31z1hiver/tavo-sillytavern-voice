@@ -3,13 +3,17 @@ import {
     MODULE_NAME,
     PROMPT_KEY,
     buildAudioSegments,
+    buildTimeline,
     extractReading,
     formatTime,
     getActiveReplyText,
     makeAudioRequestBody,
+    migratePromptSettings,
     playInOrder,
     sanitizeReadableText,
-    stripReadingBlocks
+    stripReadingBlocks,
+    timelinePosition,
+    timelineTarget
 } from './core.js';
 
 const DEFAULT_SETTINGS = {
@@ -35,7 +39,9 @@ const DEFAULT_SETTINGS = {
     promptPosition: 0,
     promptRole: 0,
     promptDepth: 4,
-    prompt: DEFAULT_PROMPT
+    prompt: DEFAULT_PROMPT,
+    promptSplit: '',
+    promptPerformance: ''
 };
 
 const context = globalThis.SillyTavern?.getContext?.();
@@ -44,7 +50,8 @@ if (!context) {
     throw new Error('SillyTavern context is unavailable');
 }
 
-const settings = mergeSettings(DEFAULT_SETTINGS, context.extensionSettings[MODULE_NAME]);
+const storedSettings = context.extensionSettings[MODULE_NAME] || {};
+const settings = mergeSettings(DEFAULT_SETTINGS, storedSettings);
 context.extensionSettings[MODULE_NAME] = settings;
 
 let settingsPanel;
@@ -76,9 +83,41 @@ function setPath(object, path, value) {
 function buildPrompt() {
     const open = settings.contextHideStructure ? '<!--MINIMAX_TTS' : '[[MINIMAX_TTS]]';
     const close = settings.contextHideStructure ? '-->' : '[[/MINIMAX_TTS]]';
-    return String(settings.prompt || DEFAULT_PROMPT)
+    const prompt = [settings.promptSplit, settings.promptPerformance]
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .join('\n\n');
+    return prompt
         .replaceAll('{{OPEN_MARKER}}', open)
-        .replaceAll('{{CLOSE_MARKER}}', close);
+        .replaceAll('{{CLOSE_MARKER}}', close)
+        .replaceAll('<!--MINIMAX_TTS', open)
+        .replaceAll('-->', close);
+}
+
+let promptDefaults = { split: DEFAULT_PROMPT, performance: '' };
+
+async function loadPromptDefaults() {
+    const read = async file => {
+        const response = await fetch(new URL(file, import.meta.url));
+        if (!response.ok) throw new Error('Could not load ' + file);
+        return (await response.text()).trim();
+    };
+    try {
+        const [split, performance] = await Promise.all([
+            read('./prompt-splitting.txt'),
+            read('./prompt-performance.txt')
+        ]);
+        const readable = value => value
+            .replaceAll('{{OPEN_MARKER}}', '<!--MINIMAX_TTS')
+            .replaceAll('{{CLOSE_MARKER}}', '-->');
+        promptDefaults = { split: readable(split), performance: readable(performance) };
+    } catch (error) {
+        console.error('Tavo Voice Player: prompt defaults failed to load', error);
+    }
+
+    migratePromptSettings(settings, storedSettings, promptDefaults, DEFAULT_PROMPT);
+    context.extensionSettings[MODULE_NAME] = settings;
+    context.saveSettingsDebounced();
 }
 
 function updatePromptInjection() {
@@ -135,7 +174,23 @@ function bindSettingsPanel() {
         if (!action) return;
         event.preventDefault();
         if (action === 'reset-prompt') {
-            settings.prompt = DEFAULT_PROMPT;
+            settings.promptSplit = promptDefaults.split;
+            settings.promptPerformance = promptDefaults.performance;
+            settings.prompt = [settings.promptSplit, settings.promptPerformance].filter(Boolean).join('\n\n');
+            syncSettingsPanel();
+            context.saveSettingsDebounced();
+            updatePromptInjection();
+        }
+        if (action === 'reset-prompt-split') {
+            settings.promptSplit = promptDefaults.split;
+            settings.prompt = [settings.promptSplit, settings.promptPerformance].filter(Boolean).join('\n\n');
+            syncSettingsPanel();
+            context.saveSettingsDebounced();
+            updatePromptInjection();
+        }
+        if (action === 'reset-prompt-performance') {
+            settings.promptPerformance = promptDefaults.performance;
+            settings.prompt = [settings.promptSplit, settings.promptPerformance].filter(Boolean).join('\n\n');
             syncSettingsPanel();
             context.saveSettingsDebounced();
             updatePromptInjection();
@@ -207,12 +262,21 @@ function createPlayer() {
         '<button type="button" data-action="clear-cache">清空音频缓存</button>',
         '</div>'
     ].join('');
-    root.querySelector('.tavo-st-progress').addEventListener('input', event => {
-        if (activeSession?.player !== root) return;
-        const audio = activeSession.audio;
-        if (Number.isFinite(audio.duration) && audio.duration > 0) {
-            audio.currentTime = audio.duration * Number(event.target.value) / 100;
-        }
+    const track = root.querySelector('.tavo-st-progress');
+    track.addEventListener('pointerdown', () => { root.dataset.seeking = 'true'; });
+    track.addEventListener('input', () => previewTimeline(root));
+    track.addEventListener('pointerup', () => {
+        setTimeout(() => { delete root.dataset.seeking; }, 0);
+    });
+    track.addEventListener('pointercancel', () => {
+        setTimeout(() => {
+            delete root.dataset.seeking;
+            if (activeSession?.player === root) updateAudioProgress(activeSession);
+        }, 0);
+    });
+    track.addEventListener('change', () => {
+        delete root.dataset.seeking;
+        seekPlayback(root);
     });
     return root;
 }
@@ -252,6 +316,7 @@ function updatePlayer(player, state, detail, ready, total) {
     icon.className = 'fa-solid ' + (state === 'playing' ? 'fa-pause' : (paused ? 'fa-play' : 'fa-play'));
     button.title = state === 'playing' ? '暂停' : (paused ? '继续播放' : '播放');
     button.setAttribute('aria-label', button.title);
+    player.querySelector('.tavo-st-progress').disabled = !['loading', 'playing', 'paused'].includes(state);
     player.querySelector('.tavo-st-detail').textContent = detail || '点击播放';
     player.querySelector('.tavo-st-ready').textContent = total ? '已就绪 ' + ready + '/' + total : '';
 }
@@ -466,60 +531,143 @@ function waitMs(milliseconds, signal) {
     });
 }
 
-async function playPauseSegment(session, seconds) {
-    let remaining = Math.max(0, Number(seconds) || 0) * 1000;
-    while (remaining > 0) {
+async function playPauseSegment(session, seconds, initialElapsed = 0) {
+    const duration = Math.max(0, Number(seconds) || 0) * 1000;
+    let elapsed = Math.min(duration, Math.max(0, Number(initialElapsed) || 0) * 1000);
+    session.pauseElapsed = elapsed / 1000;
+    while (elapsed < duration) {
         await waitForResume(session);
         const started = Date.now();
-        await waitMs(Math.min(remaining, 100), session.signal);
-        if (!session.paused) remaining -= Date.now() - started;
+        await waitMs(Math.min(duration - elapsed, 100), session.signal);
+        if (!session.paused) {
+            elapsed = Math.min(duration, elapsed + Date.now() - started);
+            session.pauseElapsed = elapsed / 1000;
+            updateAudioProgress(session);
+        }
     }
+    session.pauseElapsed = duration / 1000;
+    updateAudioProgress(session);
 }
 
-async function playBlob(session, blob) {
+async function playBlob(session, blob, startOffset = 0) {
     await waitForResume(session);
+    if (session.signal.aborted) throw session.signal.reason ?? new DOMException('Stopped', 'AbortError');
     const url = URL.createObjectURL(blob);
     session.urls.add(url);
     const audio = session.audio;
-    audio.src = url;
-    audio.currentTime = 0;
+    const cleanupUrl = () => {
+        session.urls.delete(url);
+        URL.revokeObjectURL(url);
+    };
+    try {
+        audio.src = url;
+        audio.load();
+        await new Promise((resolve, reject) => {
+            let settled = false;
+            const cleanup = () => {
+                audio.removeEventListener('loadedmetadata', onLoaded);
+                audio.removeEventListener('error', onError);
+                session.signal.removeEventListener('abort', onAbort);
+            };
+            const finish = error => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                if (error) reject(error);
+                else resolve();
+            };
+            const onLoaded = () => finish();
+            const onError = () => finish(new Error('浏览器无法读取该音频时长'));
+            const onAbort = () => finish(session.signal.reason ?? new DOMException('Stopped', 'AbortError'));
+            audio.addEventListener('loadedmetadata', onLoaded, { once: true });
+            audio.addEventListener('error', onError, { once: true });
+            session.signal.addEventListener('abort', onAbort, { once: true });
+            if (audio.readyState >= 1) finish();
+        });
 
-    await new Promise((resolve, reject) => {
-        let settled = false;
-        const cleanup = () => {
-            audio.removeEventListener('ended', onEnded);
-            audio.removeEventListener('error', onError);
-            session.signal.removeEventListener('abort', onAbort);
-            session.urls.delete(url);
-            URL.revokeObjectURL(url);
-        };
-        const finish = error => {
-            if (settled) return;
-            settled = true;
-            cleanup();
-            if (error) reject(error);
-            else resolve();
-        };
-        const onEnded = () => finish();
-        const onError = () => finish(new Error('浏览器无法播放该音频格式'));
-        const onAbort = () => finish(new DOMException('Stopped', 'AbortError'));
-        audio.addEventListener('ended', onEnded, { once: true });
-        audio.addEventListener('error', onError, { once: true });
-        session.signal.addEventListener('abort', onAbort, { once: true });
-        audio.play().catch(finish);
-    });
+        const duration = Number(audio.duration);
+        if (Number.isFinite(duration) && duration > 0) {
+            session.durations[session.currentIndex] = duration;
+            audio.currentTime = Math.max(0, Math.min(Number(startOffset) || 0, duration - 0.05));
+        }
+        session.loadedSegmentIndex = session.currentIndex;
+        updateAudioProgress(session);
+        if (session.signal.aborted) throw session.signal.reason ?? new DOMException('Stopped', 'AbortError');
+        await new Promise((resolve, reject) => {
+            let settled = false;
+            const cleanup = () => {
+                audio.removeEventListener('ended', onEnded);
+                audio.removeEventListener('error', onError);
+                session.signal.removeEventListener('abort', onAbort);
+            };
+            const finish = error => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                if (error) {
+                    audio.pause();
+                    reject(error);
+                } else resolve();
+            };
+            const onEnded = () => finish();
+            const onError = () => finish(new Error('浏览器无法播放该音频格式'));
+            const onAbort = () => finish(session.signal.reason ?? new DOMException('Stopped', 'AbortError'));
+            audio.addEventListener('ended', onEnded, { once: true });
+            audio.addEventListener('error', onError, { once: true });
+            session.signal.addEventListener('abort', onAbort, { once: true });
+            audio.play().catch(finish);
+        });
+    } finally {
+        cleanupUrl();
+    }
 }
 
 function updateAudioProgress(session) {
     const audio = session.audio;
     const player = session.player;
     if (!player?.isConnected) return;
+    const currentSegment = session.segments[session.currentIndex];
+    if (currentSegment?.type !== 'pause' && Number.isFinite(audio.duration) && audio.duration > 0) {
+        session.durations[session.currentIndex] = audio.duration;
+    }
+    if (player.dataset.seeking === 'true') return;
+    const timeline = buildTimeline(session.segments, session.durations, session.settings);
+    const position = timelinePosition(timeline, session.currentIndex,
+        currentSegment?.type === 'pause' ? session.pauseElapsed || 0 : audio.currentTime);
     const track = player.querySelector('.tavo-st-progress');
     const time = player.querySelector('.tavo-st-time');
-    const duration = Number(audio.duration) || 0;
-    const current = Number(audio.currentTime) || 0;
-    track.value = duration > 0 ? String(current / duration * 100) : '0';
-    time.textContent = formatTime(current) + ' / ' + formatTime(duration);
+    track.value = String(position.progress);
+    track.style.setProperty('--tavo-progress', position.progress + '%');
+    time.textContent = formatTime(position.current) + ' / ' + formatTime(position.total);
+}
+
+function previewTimeline(player) {
+    const session = activeSession;
+    if (!session || session.player !== player) return;
+    const track = player.querySelector('.tavo-st-progress');
+    const timeline = buildTimeline(session.segments, session.durations, session.settings);
+    const position = timelineTarget(timeline, Number(track.value));
+    track.style.setProperty('--tavo-progress', track.value + '%');
+    player.querySelector('.tavo-st-time').textContent =
+        formatTime(position.current) + ' / ' + formatTime(position.total);
+}
+
+function seekPlayback(player) {
+    const session = activeSession;
+    if (!session || session.player !== player || session.signal.aborted) return;
+    const track = player.querySelector('.tavo-st-progress');
+    const timeline = buildTimeline(session.segments, session.durations, session.settings);
+    const target = timelineTarget(timeline, Number(track.value));
+    const segment = session.segments[target.index];
+    if (target.index === session.currentIndex && session.loadedSegmentIndex === target.index &&
+        segment?.type !== 'pause' && !session.audio.ended &&
+        Number.isFinite(session.audio.duration) && session.audio.duration > 0) {
+        session.audio.currentTime = Math.min(target.offset, Math.max(0, session.audio.duration - 0.05));
+        updateAudioProgress(session);
+        return;
+    }
+    session.seekTarget = { index: target.index, offset: target.offset };
+    session.controller.abort(new DOMException('Seeking', 'AbortError'));
 }
 
 function stopSession(detail = '已停止') {
@@ -551,7 +699,7 @@ function togglePause(session) {
     }
 }
 
-async function startPlayback(player, messageId, forceRegenerate = false) {
+async function startPlayback(player, messageId, forceRegenerate = false, startTarget = null, knownDurations = []) {
     const message = context.chat?.[Number(messageId)];
     const rawText = getActiveReplyText(message);
     if (!rawText.trim()) {
@@ -572,6 +720,11 @@ async function startPlayback(player, messageId, forceRegenerate = false) {
 
     const reading = extractReading(rawText);
     reading.readable = sanitizeReadableText(reading.clean);
+    if (reading.hasStructureBlock && !reading.rows) {
+        console.warn('Tavo Voice Player: reading structure could not be parsed');
+        notifyError('朗读结构格式无效，已停止播放。请检查回复末尾 MINIMAX_TTS 结构块中的 JSON 和正文对应内容。');
+        return;
+    }
     const segments = buildAudioSegments(reading, settings);
     if (!segments.length) {
         notifyError('当前播放模式没有可朗读内容');
@@ -586,6 +739,11 @@ async function startPlayback(player, messageId, forceRegenerate = false) {
         signature: player.dataset.signature,
         player,
         audio,
+        segments,
+        settings,
+        durations: segments.map((segment, index) => segment.type === 'pause'
+            ? segment.seconds : (Number(knownDurations[index]) || 0)),
+        startTarget,
         controller,
         signal: controller.signal,
         stopped: false,
@@ -594,13 +752,17 @@ async function startPlayback(player, messageId, forceRegenerate = false) {
         urls: new Set(),
         readyCount: 0,
         total: segments.length,
-        currentIndex: 0
+        currentIndex: Math.min(startTarget?.index ?? 0, segments.length - 1),
+        pauseElapsed: 0,
+        readingMode: reading.rows ? '结构朗读' : (reading.hasStructureBlock ? '结构异常，正文兼容' : '普通文本')
     };
     activeSession = session;
     audio.addEventListener('timeupdate', () => updateAudioProgress(session));
     audio.addEventListener('loadedmetadata', () => updateAudioProgress(session));
     updatePlayer(player, 'loading', '正在准备音频', 0, segments.length);
+    updateAudioProgress(session);
 
+    let seekRestart = null;
     try {
         await playInOrder(
             segments,
@@ -626,20 +788,26 @@ async function startPlayback(player, messageId, forceRegenerate = false) {
             async (blob, segment, index) => {
                 if (session.stopped || activeSession !== session) throw new DOMException('Stopped', 'AbortError');
                 session.currentIndex = index;
-                const label = (segment.kind === 'narrator' ? '旁白' : '对白') + ' ' + (index + 1) + '/' + segments.length;
+                session.pauseElapsed = 0;
+                const offset = session.startTarget?.index === index ? session.startTarget.offset : 0;
+                session.startTarget = null;
+                const label = (segment.kind === 'narrator' ? '旁白' : '对白') + ' ' + (index + 1) + '/' + segments.length +
+                    (session.readingMode === '结构朗读' ? '' : ' · ' + session.readingMode);
                 updatePlayer(player, session.paused ? 'paused' : 'playing', label, session.readyCount, segments.length);
-                if (segment.type === 'pause') await playPauseSegment(session, segment.seconds);
-                else await playBlob(session, blob);
+                if (segment.type === 'pause') await playPauseSegment(session, segment.seconds, offset);
+                else await playBlob(session, blob, offset);
+                updateAudioProgress(session);
             },
             {
                 concurrency: 10,
+                startIndex: session.currentIndex,
                 signal: controller.signal,
                 onError: error => controller.abort(error),
                 onReady: () => {
                     if (activeSession !== session) return;
                     session.readyCount++;
                     const detail = player.querySelector('.tavo-st-detail')?.textContent || '正在加载后续音频';
-                    updatePlayer(player, activeSession === session && session.paused ? 'paused' : 'playing',
+                    updatePlayer(player, session.paused ? 'paused' : (audio.paused ? 'loading' : 'playing'),
                         detail, session.readyCount, segments.length);
                 }
             }
@@ -649,18 +817,24 @@ async function startPlayback(player, messageId, forceRegenerate = false) {
             updatePlayer(player, 'idle', '播放完成', session.readyCount, segments.length);
             player.querySelector('.tavo-st-time').textContent = '0:00 / 0:00';
             player.querySelector('.tavo-st-progress').value = '0';
+            player.querySelector('.tavo-st-progress').style.setProperty('--tavo-progress', '0%');
         }
     } catch (error) {
         if (activeSession === session) {
-            activeSession = null;
-            session.controller.abort();
-            const stopped = error?.name === 'AbortError';
-            updatePlayer(player, 'idle', stopped ? '已停止' : '播放失败', session.readyCount, segments.length);
-            if (!stopped) {
-                const detail = error instanceof TypeError
-                    ? '网络请求失败，请检查 API 地址和跨域 CORS 设置'
-                    : String(error?.message || error);
-                notifyError(detail);
+            if (session.seekTarget) {
+                seekRestart = session.seekTarget;
+                activeSession = null;
+            } else {
+                activeSession = null;
+                session.controller.abort();
+                const stopped = error?.name === 'AbortError';
+                updatePlayer(player, 'idle', stopped ? '已停止' : '播放失败', session.readyCount, segments.length);
+                if (!stopped) {
+                    const detail = error instanceof TypeError
+                        ? '网络请求失败，请检查 API 地址和跨域 CORS 设置'
+                        : String(error?.message || error);
+                    notifyError(detail);
+                }
             }
         }
     } finally {
@@ -670,6 +844,7 @@ async function startPlayback(player, messageId, forceRegenerate = false) {
         for (const url of session.urls) URL.revokeObjectURL(url);
         session.urls.clear();
     }
+    if (seekRestart) await startPlayback(player, messageId, forceRegenerate, seekRestart, session.durations);
 }
 
 function handlePlayerAction(event) {
@@ -717,6 +892,7 @@ function handleSwipe(messageId) {
 }
 
 async function initialize() {
+    await loadPromptDefaults();
     updatePromptInjection();
     try {
         await loadSettingsPanel();

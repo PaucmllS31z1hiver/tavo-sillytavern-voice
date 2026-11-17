@@ -7,7 +7,9 @@ A standalone SillyTavern UI extension adapted from the Tavo MiniMax voice player
 - Adds a compact player below each character reply.
 - Reads the active SillyTavern message text, so the selected swipe is played.
 - Uses the current chat model for optional reading-structure prompt injection.
+- Shows one timeline for the full reply and supports seeking across generated segments.
 - Starts playback as soon as the next in-order segment is ready while up to ten requests prefetch in parallel.
+- Provides separate editable role-splitting and emotion/sound prompt sections, plus named voice selectors.
 - Stores generated audio in the browser IndexedDB.
 - Keeps reading markers out of future model requests without editing saved chat messages.
 
@@ -25,7 +27,7 @@ The API endpoint must allow browser requests from the SillyTavern origin. Config
 
 ## SillyTavern integration
 
-This is a native SillyTavern UI extension. It uses the extension settings API and message events for the player, and `setExtensionPrompt` only when the optional reading-structure prompt is enabled. `generate_interceptor` removes hidden reading metadata from the model's request copy; it does not rewrite saved chat messages. The player reads the active message text, including the selected swipe.
+This is a native SillyTavern UI extension. It uses the extension settings API and message events for the player. The optional prompt injection joins the editable role-splitting and emotion/sound sections before calling `setExtensionPrompt`. `generate_interceptor` removes hidden reading metadata from the model's request copy; it does not rewrite saved chat messages. The player reads the active message text, including the selected swipe, and normalizes common Tavo structure variants before falling back to plain text.
 
 The implementation follows the official extension API and adapts patterns from open-source TTS extensions: provider-style request settings and cancellable segmented playback from [MiMoTTS](https://github.com/ymf2317-tech/SillyTavern-MiMoTTS), and per-message playback controls and optional prompt handling from [AI TTS Filter](https://github.com/Immortalization98/Di-SillyTavern-AITTSFilter). Some reference extensions target newer SillyTavern releases, so this extension was checked against the installed 1.15.0 APIs.
 

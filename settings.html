@@ -21,11 +21,42 @@
                     <option value="dialogue">仅对白</option>
                 </select>
             </label>
-            <label>旁白音色 ID
-                <input class="text_pole" data-setting="narratorVoice" type="text" list="tavo-st-voices" spellcheck="false">
+            <label>旁白音色
+                <select class="text_pole" data-setting="narratorVoice">
+                    <option value="moss_audio_46b3651e-a85e-11f1-8957-ba6628da9bfd">旁白（女5分钟）</option>
+                    <option value="moss_audio_485c1515-a203-11f1-aff1-6e4b0c54af8d">旁白（女）</option>
+                    <option value="moss_audio_499a9275-a861-11f1-b7bb-b695f68c934a">苏倩（5分钟）</option>
+                    <option value="moss_audio_54ffe2af-a030-11f1-8957-ba6628da9bfd">苏倩</option>
+                    <option value="moss_audio_fc774bdd-a438-11f1-a626-8a59b47fb1f9">虞寻歌2.0</option>
+                    <option value="moss_audio_560428c9-a435-11f1-8957-ba6628da9bfd">虞寻歌（工作室）</option>
+                    <option value="moss_audio_cc1df167-a434-11f1-aa1d-d2651eedd987">星宿年轻音色</option>
+                    <option value="moss_audio_1d309c5c-a1ff-11f1-acee-26b6a8502990">虞寻歌</option>
+                    <option value="moss_audio_40e2f4fa-a201-11f1-a626-8a59b47fb1f9">商心慈</option>
+                    <option value="moss_audio_7d6cd64a-a200-11f1-ac4a-de88e9c22e4a">阎冰卿</option>
+                    <option value="moss_audio_a82f1e07-a439-11f1-8900-9edb4a3ef07d">星宿仙尊</option>
+                    <option value="moss_audio_aa208aaa-a1ff-11f1-94de-e22cb72c308c">文思月</option>
+                    <option value="moss_audio_7ecde524-a201-11f1-94de-e22cb72c308c">慕沛灵</option>
+                    <option value="moss_audio_be8ada8f-a203-11f1-bcbd-9a2b20d980c0">梅凝</option>
+                    <option value="moss_audio_b78aaac7-a204-11f1-bf36-dabba993c40d">白凝冰</option>
+                </select>
             </label>
-            <label>对白默认音色 ID
-                <input class="text_pole" data-setting="dialogueVoice" type="text" list="tavo-st-voices" spellcheck="false">
+            <label>对白默认音色
+                <select class="text_pole" data-setting="dialogueVoice">
+                    <option value="moss_audio_cbb39430-a862-11f1-aa1d-d2651eedd987">苏青（稳定语气）</option>
+                    <option value="moss_audio_0e4e8613-a85f-11f1-acee-26b6a8502990">苏青（5分钟）</option>
+                    <option value="moss_audio_f135398f-a201-11f1-aff1-6e4b0c54af8d">苏青（男）</option>
+                    <option value="moss_audio_8bec2991-a85f-11f1-ac4a-de88e9c22e4a">陈洛</option>
+                    <option value="moss_audio_d70fd7a2-a85f-11f1-aff1-6e4b0c54af8d">赵牧</option>
+                    <option value="moss_audio_e184495d-a203-11f1-b06d-eaacce949834">老宝玉</option>
+                    <option value="moss_audio_ddb30f20-a861-11f1-8f51-7270dd4a9232">老宝玉（5分钟）</option>
+                    <option value="moss_audio_d938076b-a439-11f1-b06d-eaacce949834">无极魔尊</option>
+                    <option value="moss_audio_2d829f1b-a202-11f1-aff1-6e4b0c54af8d">齐静春</option>
+                    <option value="moss_audio_0bcb90c6-a204-11f1-b06d-eaacce949834">韩立</option>
+                    <option value="moss_audio_499a9275-a861-11f1-b7bb-b695f68c934a">苏倩（5分钟）</option>
+                    <option value="moss_audio_fc774bdd-a438-11f1-a626-8a59b47fb1f9">虞寻歌2.0</option>
+                    <option value="moss_audio_1d309c5c-a1ff-11f1-acee-26b6a8502990">虞寻歌</option>
+                    <option value="moss_audio_b78aaac7-a204-11f1-bf36-dabba993c40d">白凝冰</option>
+                </select>
             </label>
             <label>音频格式
                 <select class="text_pole" data-setting="audioFormat">
@@ -55,35 +86,79 @@
             </label>
         </div>
 
-        <datalist id="tavo-st-voices">
-            <option value="moss_audio_46b3651e-a85e-11f1-8957-ba6628da9bfd">旁白女声</option>
-            <option value="moss_audio_485c1515-a203-11f1-aff1-6e4b0c54af8d">旁白女声</option>
-            <option value="moss_audio_1d309c5c-a1ff-11f1-acee-26b6a8502990">叙述默认音色</option>
-            <option value="moss_audio_cbb39430-a862-11f1-aa1d-d2651eedd987">苏青</option>
-            <option value="moss_audio_f135398f-a201-11f1-aff1-6e4b0c54af8d">男声</option>
-            <option value="moss_audio_499a9275-a861-11f1-b7bb-b695f68c934a">苏倩</option>
-            <option value="moss_audio_54ffe2af-a030-11f1-8957-ba6628da9bfd">女声</option>
-        </datalist>
-
         <details class="tavo-st-settings-details">
             <summary>角色音色</summary>
             <div class="tavo-st-settings-grid">
                 <label>主角
-                    <input class="text_pole" data-setting="voices.protagonist" type="text" list="tavo-st-voices">
+                    <select class="text_pole" data-setting="voices.protagonist">
+                        <option value="">跟随对白默认音色</option>
+                        <option value="moss_audio_cbb39430-a862-11f1-aa1d-d2651eedd987">苏青（稳定语气）</option>
+                        <option value="moss_audio_0e4e8613-a85f-11f1-acee-26b6a8502990">苏青（5分钟）</option>
+                        <option value="moss_audio_f135398f-a201-11f1-aff1-6e4b0c54af8d">苏青（男）</option>
+                        <option value="moss_audio_8bec2991-a85f-11f1-ac4a-de88e9c22e4a">陈洛</option>
+                        <option value="moss_audio_d70fd7a2-a85f-11f1-aff1-6e4b0c54af8d">赵牧</option>
+                        <option value="moss_audio_e184495d-a203-11f1-b06d-eaacce949834">老宝玉</option>
+                        <option value="moss_audio_ddb30f20-a861-11f1-8f51-7270dd4a9232">老宝玉（5分钟）</option>
+                        <option value="moss_audio_d938076b-a439-11f1-b06d-eaacce949834">无极魔尊</option>
+                        <option value="moss_audio_2d829f1b-a202-11f1-aff1-6e4b0c54af8d">齐静春</option>
+                        <option value="moss_audio_0bcb90c6-a204-11f1-b06d-eaacce949834">韩立</option>
+                    </select>
                 </label>
                 <label>女主
-                    <input class="text_pole" data-setting="voices.heroine" type="text" list="tavo-st-voices">
+                    <select class="text_pole" data-setting="voices.heroine">
+                        <option value="">跟随对白默认音色</option>
+                        <option value="moss_audio_499a9275-a861-11f1-b7bb-b695f68c934a">苏倩（5分钟）</option>
+                        <option value="moss_audio_54ffe2af-a030-11f1-8957-ba6628da9bfd">苏倩</option>
+                        <option value="moss_audio_fc774bdd-a438-11f1-a626-8a59b47fb1f9">虞寻歌2.0</option>
+                        <option value="moss_audio_560428c9-a435-11f1-8957-ba6628da9bfd">虞寻歌（工作室）</option>
+                        <option value="moss_audio_cc1df167-a434-11f1-aa1d-d2651eedd987">星宿年轻音色</option>
+                        <option value="moss_audio_1d309c5c-a1ff-11f1-acee-26b6a8502990">虞寻歌</option>
+                        <option value="moss_audio_40e2f4fa-a201-11f1-a626-8a59b47fb1f9">商心慈</option>
+                        <option value="moss_audio_7d6cd64a-a200-11f1-ac4a-de88e9c22e4a">阎冰卿</option>
+                        <option value="moss_audio_a82f1e07-a439-11f1-8900-9edb4a3ef07d">星宿仙尊</option>
+                        <option value="moss_audio_aa208aaa-a1ff-11f1-94de-e22cb72c308c">文思月</option>
+                        <option value="moss_audio_7ecde524-a201-11f1-94de-e22cb72c308c">慕沛灵</option>
+                        <option value="moss_audio_be8ada8f-a203-11f1-bcbd-9a2b20d980c0">梅凝</option>
+                        <option value="moss_audio_b78aaac7-a204-11f1-bf36-dabba993c40d">白凝冰</option>
+                    </select>
                 </label>
                 <label>男 NPC
-                    <input class="text_pole" data-setting="voices.maleNpc" type="text" list="tavo-st-voices">
+                    <select class="text_pole" data-setting="voices.maleNpc">
+                        <option value="">跟随对白默认音色</option>
+                        <option value="moss_audio_cbb39430-a862-11f1-aa1d-d2651eedd987">苏青（稳定语气）</option>
+                        <option value="moss_audio_0e4e8613-a85f-11f1-acee-26b6a8502990">苏青（5分钟）</option>
+                        <option value="moss_audio_f135398f-a201-11f1-aff1-6e4b0c54af8d">苏青（男）</option>
+                        <option value="moss_audio_8bec2991-a85f-11f1-ac4a-de88e9c22e4a">陈洛</option>
+                        <option value="moss_audio_d70fd7a2-a85f-11f1-aff1-6e4b0c54af8d">赵牧</option>
+                        <option value="moss_audio_e184495d-a203-11f1-b06d-eaacce949834">老宝玉</option>
+                        <option value="moss_audio_ddb30f20-a861-11f1-8f51-7270dd4a9232">老宝玉（5分钟）</option>
+                        <option value="moss_audio_d938076b-a439-11f1-b06d-eaacce949834">无极魔尊</option>
+                        <option value="moss_audio_2d829f1b-a202-11f1-aff1-6e4b0c54af8d">齐静春</option>
+                        <option value="moss_audio_0bcb90c6-a204-11f1-b06d-eaacce949834">韩立</option>
+                    </select>
                 </label>
                 <label>女 NPC
-                    <input class="text_pole" data-setting="voices.femaleNpc" type="text" list="tavo-st-voices">
+                    <select class="text_pole" data-setting="voices.femaleNpc">
+                        <option value="">跟随对白默认音色</option>
+                        <option value="moss_audio_499a9275-a861-11f1-b7bb-b695f68c934a">苏倩（5分钟）</option>
+                        <option value="moss_audio_54ffe2af-a030-11f1-8957-ba6628da9bfd">苏倩</option>
+                        <option value="moss_audio_fc774bdd-a438-11f1-a626-8a59b47fb1f9">虞寻歌2.0</option>
+                        <option value="moss_audio_560428c9-a435-11f1-8957-ba6628da9bfd">虞寻歌（工作室）</option>
+                        <option value="moss_audio_cc1df167-a434-11f1-aa1d-d2651eedd987">星宿年轻音色</option>
+                        <option value="moss_audio_1d309c5c-a1ff-11f1-acee-26b6a8502990">虞寻歌</option>
+                        <option value="moss_audio_40e2f4fa-a201-11f1-a626-8a59b47fb1f9">商心慈</option>
+                        <option value="moss_audio_7d6cd64a-a200-11f1-ac4a-de88e9c22e4a">阎冰卿</option>
+                        <option value="moss_audio_a82f1e07-a439-11f1-8900-9edb4a3ef07d">星宿仙尊</option>
+                        <option value="moss_audio_aa208aaa-a1ff-11f1-94de-e22cb72c308c">文思月</option>
+                        <option value="moss_audio_7ecde524-a201-11f1-94de-e22cb72c308c">慕沛灵</option>
+                        <option value="moss_audio_be8ada8f-a203-11f1-bcbd-9a2b20d980c0">梅凝</option>
+                        <option value="moss_audio_b78aaac7-a204-11f1-bf36-dabba993c40d">白凝冰</option>
+                    </select>
                 </label>
             </div>
         </details>
 
-        <details class="tavo-st-settings-details">
+        <details class="tavo-st-settings-details" open>
             <summary>朗读提示词</summary>
             <label class="tavo-st-check">
                 <input data-setting="promptEnabled" type="checkbox">
@@ -108,9 +183,30 @@
                     <input class="text_pole" data-setting="promptDepth" type="number" min="0" max="10000" step="1">
                 </label>
             </div>
-            <label>提示词内容
-                <textarea class="text_pole textarea_compact" data-setting="prompt" rows="12"></textarea>
-            </label>
+            <section class="tavo-st-prompt-section" aria-labelledby="tavo-st-prompt-split-title">
+                <div class="tavo-st-prompt-heading">
+                    <div>
+                        <div class="tavo-st-prompt-title" id="tavo-st-prompt-split-title">角色、旁白与对白拆分</div>
+                        <div class="tavo-st-prompt-description">定义如何识别旁白、角色和对白，并为对白标注说话角色。</div>
+                    </div>
+                    <button class="menu_button" type="button" data-action="reset-prompt-split">恢复此段默认提示词</button>
+                </div>
+                <label class="tavo-st-prompt-input">拆分规则
+                    <textarea class="text_pole textarea_compact" data-setting="promptSplit" rows="8"></textarea>
+                </label>
+            </section>
+            <section class="tavo-st-prompt-section" aria-labelledby="tavo-st-prompt-performance-title">
+                <div class="tavo-st-prompt-heading">
+                    <div>
+                        <div class="tavo-st-prompt-title" id="tavo-st-prompt-performance-title">情绪、音效与停顿</div>
+                        <div class="tavo-st-prompt-description">定义情绪标签、音效标记、停顿和语速的表达方式。</div>
+                    </div>
+                    <button class="menu_button" type="button" data-action="reset-prompt-performance">恢复此段默认提示词</button>
+                </div>
+                <label class="tavo-st-prompt-input">表现规则
+                    <textarea class="text_pole textarea_compact" data-setting="promptPerformance" rows="8"></textarea>
+                </label>
+            </section>
             <div class="tavo-st-settings-actions">
                 <button class="menu_button" type="button" data-action="reset-prompt">恢复默认提示词</button>
                 <label class="tavo-st-check">
