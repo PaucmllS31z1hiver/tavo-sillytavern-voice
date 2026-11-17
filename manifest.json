@@ -1,0 +1,10 @@
+{
+  "display_name": "Tavo Voice Player",
+  "loading_order": 10,
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Tavo Voice Player",
+  "version": "0.1.0",
+  "minimum_client_version": "1.15.0",
+  "generate_interceptor": "tavoVoicePromptInterceptor"
+}

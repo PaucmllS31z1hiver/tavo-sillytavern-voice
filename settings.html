@@ -1,0 +1,128 @@
+<div id="tavo_voice_settings" class="inline-drawer">
+    <div class="inline-drawer-toggle inline-drawer-header">
+        <b>Tavo Voice Player</b>
+        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+    </div>
+    <div class="inline-drawer-content">
+        <div class="tavo-st-settings-grid">
+            <label>API 地址
+                <input class="text_pole" data-setting="baseUrl" type="url" spellcheck="false">
+            </label>
+            <label>API Key
+                <input class="text_pole" data-setting="apiKey" type="password" autocomplete="off">
+            </label>
+            <label>模型
+                <input class="text_pole" data-setting="model" type="text" spellcheck="false">
+            </label>
+            <label>播放内容
+                <select class="text_pole" data-setting="playbackMode">
+                    <option value="all">旁白和对白</option>
+                    <option value="narrator">仅旁白</option>
+                    <option value="dialogue">仅对白</option>
+                </select>
+            </label>
+            <label>旁白音色 ID
+                <input class="text_pole" data-setting="narratorVoice" type="text" list="tavo-st-voices" spellcheck="false">
+            </label>
+            <label>对白默认音色 ID
+                <input class="text_pole" data-setting="dialogueVoice" type="text" list="tavo-st-voices" spellcheck="false">
+            </label>
+            <label>音频格式
+                <select class="text_pole" data-setting="audioFormat">
+                    <option value="wav">WAV</option>
+                    <option value="mp3">MP3</option>
+                </select>
+            </label>
+            <label>采样率
+                <select class="text_pole" data-setting="sampleRate">
+                    <option value="16000">16000 Hz</option>
+                    <option value="24000">24000 Hz</option>
+                    <option value="32000">32000 Hz</option>
+                    <option value="44100">44100 Hz</option>
+                </select>
+            </label>
+            <label>旁白语速 <span data-output="speed"></span>
+                <input data-setting="speed" type="range" min="0.5" max="2" step="0.05">
+            </label>
+            <label>对白语速 <span data-output="dialogueSpeed"></span>
+                <input data-setting="dialogueSpeed" type="range" min="0.5" max="2" step="0.05">
+            </label>
+            <label>语言增强
+                <select class="text_pole" data-setting="languageBoost">
+                    <option value="Chinese">中文</option>
+                    <option value="auto">自动</option>
+                </select>
+            </label>
+        </div>
+
+        <datalist id="tavo-st-voices">
+            <option value="moss_audio_46b3651e-a85e-11f1-8957-ba6628da9bfd">旁白女声</option>
+            <option value="moss_audio_485c1515-a203-11f1-aff1-6e4b0c54af8d">旁白女声</option>
+            <option value="moss_audio_1d309c5c-a1ff-11f1-acee-26b6a8502990">叙述默认音色</option>
+            <option value="moss_audio_cbb39430-a862-11f1-aa1d-d2651eedd987">苏青</option>
+            <option value="moss_audio_f135398f-a201-11f1-aff1-6e4b0c54af8d">男声</option>
+            <option value="moss_audio_499a9275-a861-11f1-b7bb-b695f68c934a">苏倩</option>
+            <option value="moss_audio_54ffe2af-a030-11f1-8957-ba6628da9bfd">女声</option>
+        </datalist>
+
+        <details class="tavo-st-settings-details">
+            <summary>角色音色</summary>
+            <div class="tavo-st-settings-grid">
+                <label>主角
+                    <input class="text_pole" data-setting="voices.protagonist" type="text" list="tavo-st-voices">
+                </label>
+                <label>女主
+                    <input class="text_pole" data-setting="voices.heroine" type="text" list="tavo-st-voices">
+                </label>
+                <label>男 NPC
+                    <input class="text_pole" data-setting="voices.maleNpc" type="text" list="tavo-st-voices">
+                </label>
+                <label>女 NPC
+                    <input class="text_pole" data-setting="voices.femaleNpc" type="text" list="tavo-st-voices">
+                </label>
+            </div>
+        </details>
+
+        <details class="tavo-st-settings-details">
+            <summary>朗读提示词</summary>
+            <label class="tavo-st-check">
+                <input data-setting="promptEnabled" type="checkbox">
+                <span>把朗读规则注入当前聊天 AI</span>
+            </label>
+            <div class="tavo-st-settings-grid">
+                <label>注入位置
+                    <select class="text_pole" data-setting="promptPosition">
+                        <option value="2">提示词之前</option>
+                        <option value="0">提示词中</option>
+                        <option value="1">聊天深度</option>
+                    </select>
+                </label>
+                <label>注入角色
+                    <select class="text_pole" data-setting="promptRole">
+                        <option value="0">System</option>
+                        <option value="1">User</option>
+                        <option value="2">Assistant</option>
+                    </select>
+                </label>
+                <label data-show-depth>聊天深度
+                    <input class="text_pole" data-setting="promptDepth" type="number" min="0" max="10000" step="1">
+                </label>
+            </div>
+            <label>提示词内容
+                <textarea class="text_pole textarea_compact" data-setting="prompt" rows="12"></textarea>
+            </label>
+            <div class="tavo-st-settings-actions">
+                <button class="menu_button" type="button" data-action="reset-prompt">恢复默认提示词</button>
+                <label class="tavo-st-check">
+                    <input data-setting="contextHideStructure" type="checkbox">
+                    <span>用 HTML 注释隐藏朗读结构</span>
+                </label>
+            </div>
+        </details>
+
+        <div class="tavo-st-settings-actions">
+            <button class="menu_button" type="button" data-action="clear-cache">清空音频缓存</button>
+            <span class="tavo-st-settings-status" aria-live="polite"></span>
+        </div>
+    </div>
+</div>

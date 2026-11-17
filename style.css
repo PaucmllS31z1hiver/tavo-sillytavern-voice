@@ -1,0 +1,224 @@
+#tavo_voice_settings {
+    margin: 0.5rem 0;
+}
+
+#tavo_voice_settings .inline-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.tavo-st-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem 1rem;
+    margin: 0.5rem 0;
+}
+
+.tavo-st-settings-grid > label,
+#tavo_voice_settings .inline-drawer-content > label {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.tavo-st-settings-grid input[type="range"] {
+    width: 100%;
+    accent-color: var(--SmartThemeQuoteColor, #3b8c68);
+}
+
+.tavo-st-settings-details {
+    margin-top: 0.65rem;
+    padding-top: 0.55rem;
+    border-top: 1px solid var(--SmartThemeBorderColor, rgba(127, 127, 127, 0.3));
+}
+
+.tavo-st-settings-details summary {
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: 0.5rem;
+}
+
+.tavo-st-settings-actions,
+.tavo-st-check {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+}
+
+.tavo-st-settings-actions {
+    justify-content: space-between;
+    margin-top: 0.65rem;
+}
+
+.tavo-st-check {
+    margin: 0.5rem 0;
+}
+
+.tavo-st-check input {
+    flex: 0 0 auto;
+}
+
+.tavo-st-settings-status {
+    opacity: 0.75;
+    font-size: 0.9em;
+}
+
+.tavo-st-player {
+    position: relative;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr) 34px;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    min-height: 58px;
+    box-sizing: border-box;
+    margin-top: 0.5rem;
+    padding: 0.5rem 0 0;
+    border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+    color: inherit;
+}
+
+.tavo-st-player button {
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+}
+
+.tavo-st-play,
+.tavo-st-more {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+}
+
+.tavo-st-play {
+    color: #fff !important;
+    background: #287653;
+    border-color: #287653;
+}
+
+.tavo-st-player[data-state="playing"] .tavo-st-play {
+    background: #a4473d;
+    border-color: #a4473d;
+}
+
+.tavo-st-player[data-state="loading"] .tavo-st-play {
+    background: #946515;
+    border-color: #946515;
+}
+
+.tavo-st-more {
+    background: color-mix(in srgb, currentColor 7%, transparent);
+}
+
+.tavo-st-play:focus-visible,
+.tavo-st-more:focus-visible,
+.tavo-st-menu button:focus-visible {
+    outline: 2px solid var(--SmartThemeQuoteColor, #3b8c68);
+    outline-offset: 2px;
+}
+
+.tavo-st-body {
+    display: grid;
+    min-width: 0;
+    gap: 0.18rem;
+}
+
+.tavo-st-head,
+.tavo-st-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 0;
+    gap: 0.5rem;
+}
+
+.tavo-st-title,
+.tavo-st-time,
+.tavo-st-detail,
+.tavo-st-ready {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tavo-st-title {
+    font-size: 0.85em;
+    font-weight: 600;
+}
+
+.tavo-st-time,
+.tavo-st-detail,
+.tavo-st-ready {
+    font-size: 0.75em;
+}
+
+.tavo-st-time,
+.tavo-st-ready {
+    flex: 0 0 auto;
+    opacity: 0.68;
+    font-variant-numeric: tabular-nums;
+}
+
+.tavo-st-detail {
+    color: var(--SmartThemeQuoteColor, #287653);
+}
+
+.tavo-st-progress {
+    display: block;
+    width: 100%;
+    height: 18px;
+    margin: -0.2rem 0;
+    padding: 0;
+    accent-color: var(--SmartThemeQuoteColor, #287653);
+    cursor: pointer;
+    touch-action: pan-x;
+}
+
+.tavo-st-menu {
+    position: absolute;
+    z-index: 30;
+    right: 0;
+    bottom: calc(100% + 0.35rem);
+    display: grid;
+    min-width: 10rem;
+    padding: 0.25rem;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(127, 127, 127, 0.35));
+    border-radius: 6px;
+    background: var(--SmartThemeBlurTintColor, var(--SmartThemeBodyColor, #202020));
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24);
+}
+
+.tavo-st-menu[hidden] {
+    display: none;
+}
+
+.tavo-st-menu button {
+    padding: 0.45rem 0.6rem;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    text-align: left;
+}
+
+.tavo-st-menu button:hover {
+    background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+@media (max-width: 640px) {
+    .tavo-st-settings-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .tavo-st-ready {
+        max-width: 7.5rem;
+    }
+}
