@@ -32,6 +32,12 @@ const DEFAULT_SETTINGS = {
     voices: {
         protagonist: 'moss_audio_cbb39430-a862-11f1-aa1d-d2651eedd987',
         heroine: 'moss_audio_499a9275-a861-11f1-b7bb-b695f68c934a',
+        heroine1: 'moss_audio_499a9275-a861-11f1-b7bb-b695f68c934a',
+        heroine2: '',
+        heroine3: '',
+        heroine4: '',
+        npc1: '',
+        npc2: '',
         maleNpc: 'moss_audio_cbb39430-a862-11f1-aa1d-d2651eedd987',
         femaleNpc: 'moss_audio_499a9275-a861-11f1-b7bb-b695f68c934a'
     },
@@ -43,6 +49,34 @@ const DEFAULT_SETTINGS = {
     promptSplit: '',
     promptPerformance: ''
 };
+
+const VOICE_PRESETS = [
+    ['旁白（女5分钟）', 'moss_audio_46b3651e-a85e-11f1-8957-ba6628da9bfd'],
+    ['旁白（女）', 'moss_audio_485c1515-a203-11f1-aff1-6e4b0c54af8d'],
+    ['苏青（稳定语气）', 'moss_audio_cbb39430-a862-11f1-aa1d-d2651eedd987'],
+    ['苏青（5分钟）', 'moss_audio_0e4e8613-a85f-11f1-acee-26b6a8502990'],
+    ['苏青（男）', 'moss_audio_f135398f-a201-11f1-aff1-6e4b0c54af8d'],
+    ['陈洛', 'moss_audio_8bec2991-a85f-11f1-ac4a-de88e9c22e4a'],
+    ['赵牧', 'moss_audio_d70fd7a2-a85f-11f1-aff1-6e4b0c54af8d'],
+    ['老宝玉', 'moss_audio_e184495d-a203-11f1-b06d-eaacce949834'],
+    ['老宝玉（5分钟）', 'moss_audio_ddb30f20-a861-11f1-8f51-7270dd4a9232'],
+    ['无极魔尊', 'moss_audio_d938076b-a439-11f1-b06d-eaacce949834'],
+    ['齐静春', 'moss_audio_2d829f1b-a202-11f1-aff1-6e4b0c54af8d'],
+    ['韩立', 'moss_audio_0bcb90c6-a204-11f1-b06d-eaacce949834'],
+    ['苏倩（5分钟）', 'moss_audio_499a9275-a861-11f1-b7bb-b695f68c934a'],
+    ['虞寻歌2.0', 'moss_audio_fc774bdd-a438-11f1-a626-8a59b47fb1f9'],
+    ['虞寻歌（工作室）', 'moss_audio_560428c9-a435-11f1-8957-ba6628da9bfd'],
+    ['星宿年轻音色', 'moss_audio_cc1df167-a434-11f1-aa1d-d2651eedd987'],
+    ['虞寻歌', 'moss_audio_1d309c5c-a1ff-11f1-acee-26b6a8502990'],
+    ['苏倩', 'moss_audio_54ffe2af-a030-11f1-8957-ba6628da9bfd'],
+    ['商心慈', 'moss_audio_40e2f4fa-a201-11f1-a626-8a59b47fb1f9'],
+    ['阎冰卿', 'moss_audio_7d6cd64a-a200-11f1-ac4a-de88e9c22e4a'],
+    ['星宿仙尊', 'moss_audio_a82f1e07-a439-11f1-8900-9edb4a3ef07d'],
+    ['文思月', 'moss_audio_aa208aaa-a1ff-11f1-94de-e22cb72c308c'],
+    ['慕沛灵', 'moss_audio_7ecde524-a201-11f1-94de-e22cb72c308c'],
+    ['梅凝', 'moss_audio_be8ada8f-a203-11f1-bcbd-9a2b20d980c0'],
+    ['白凝冰', 'moss_audio_b78aaac7-a204-11f1-bf36-dabba993c40d']
+];
 
 const context = globalThis.SillyTavern?.getContext?.();
 if (!context) {
@@ -63,6 +97,10 @@ const activeCacheWrites = new Set();
 function mergeSettings(defaults, stored) {
     const result = { ...defaults, ...(stored || {}) };
     result.voices = { ...defaults.voices, ...(stored?.voices || {}) };
+    if (!Object.prototype.hasOwnProperty.call(stored?.voices || {}, 'heroine1') &&
+        Object.prototype.hasOwnProperty.call(stored?.voices || {}, 'heroine')) {
+        result.voices.heroine1 = stored.voices.heroine;
+    }
     return result;
 }
 
@@ -149,8 +187,27 @@ async function loadSettingsPanel() {
     settingsPanel = holder.firstElementChild;
     if (!settingsPanel) throw new Error('Could not render Tavo Voice Player settings.');
     document.getElementById('extensions_settings')?.append(settingsPanel);
+    populateVoiceOptions();
     bindSettingsPanel();
     syncSettingsPanel();
+}
+
+function populateVoiceOptions() {
+    for (const select of settingsPanel.querySelectorAll('select[data-voice-picker]')) {
+        const selected = String(getPath(settings, select.dataset.setting) || '');
+        for (const [name, id] of VOICE_PRESETS) {
+            const option = document.createElement('option');
+            option.value = id;
+            option.textContent = name;
+            select.append(option);
+        }
+        if (selected && !VOICE_PRESETS.some(([, id]) => id === selected)) {
+            const option = document.createElement('option');
+            option.value = selected;
+            option.textContent = '自定义音色（名称未收录）';
+            select.append(option);
+        }
+    }
 }
 
 function bindSettingsPanel() {
@@ -251,7 +308,7 @@ function createPlayer() {
         '<i class="fa-solid fa-play" aria-hidden="true"></i></button>',
         '<div class="tavo-st-body">',
         '<div class="tavo-st-head"><span class="tavo-st-title">Tavo 朗读</span><span class="tavo-st-time">0:00 / 0:00</span></div>',
-        '<input class="tavo-st-progress" type="range" min="0" max="100" step="0.1" value="0" aria-label="当前句进度">',
+        '<input class="tavo-st-progress" type="range" min="0" max="100" step="0.1" value="0" aria-label="整段回复进度">',
         '<div class="tavo-st-foot"><span class="tavo-st-detail">点击播放</span><span class="tavo-st-ready"></span></div>',
         '</div>',
         '<button class="tavo-st-more" type="button" data-action="menu" title="更多操作" aria-label="更多操作" aria-expanded="false">',
@@ -286,15 +343,13 @@ function refreshMessagePlayer(messageId) {
     const message = context.chat?.[index];
     const element = getMessageElement(messageId);
     if (!message || !element || message.is_user || message.is_system || element.getAttribute('is_user') === 'true') return;
-    const block = element.querySelector('.mes_block');
-    if (!block) return;
+    const body = element.querySelector('.mes_text');
+    if (!body) return;
 
     const signature = String(message.swipe_id ?? 0) + ':' + getActiveReplyText(message);
-    let player = block.querySelector('.tavo-st-player');
-    if (!player) {
-        player = createPlayer();
-        block.append(player);
-    }
+    let player = element.querySelector('.tavo-st-player');
+    if (!player) player = createPlayer();
+    if (player.parentElement !== body) body.append(player);
     if (player.dataset.signature && player.dataset.signature !== signature &&
         activeSession?.messageId === index) stopSession('切换了回复');
     player.dataset.signature = signature;
@@ -493,6 +548,45 @@ async function requestAudio(segment, signal) {
         throw new Error(response.status + ' ' + (detail || response.statusText));
     }
     return responseToAudioBlob(response);
+}
+
+function measureAudioDuration(blob, signal) {
+    return new Promise(resolve => {
+        let audio;
+        let url;
+        let timer;
+        let settled = false;
+        const finish = duration => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', onAbort);
+            audio?.removeEventListener('loadedmetadata', onLoaded);
+            audio?.removeEventListener('error', onError);
+            audio?.pause();
+            audio?.removeAttribute('src');
+            audio?.load();
+            if (url) URL.revokeObjectURL(url);
+            const value = Number(duration);
+            resolve(Number.isFinite(value) && value > 0 ? value : 0);
+        };
+        const onLoaded = () => finish(audio.duration);
+        const onError = () => finish(0);
+        const onAbort = () => finish(0);
+        try {
+            audio = new Audio();
+            audio.preload = 'metadata';
+            url = URL.createObjectURL(blob);
+            audio.addEventListener('loadedmetadata', onLoaded, { once: true });
+            audio.addEventListener('error', onError, { once: true });
+            signal?.addEventListener('abort', onAbort, { once: true });
+            timer = setTimeout(() => finish(0), 3000);
+            audio.src = url;
+            audio.load();
+        } catch {
+            finish(0);
+        }
+    });
 }
 
 function waitForResume(session) {
@@ -803,9 +897,18 @@ async function startPlayback(player, messageId, forceRegenerate = false, startTa
                 startIndex: session.currentIndex,
                 signal: controller.signal,
                 onError: error => controller.abort(error),
-                onReady: () => {
+                onReady: (index, blob) => {
                     if (activeSession !== session) return;
                     session.readyCount++;
+                    updateAudioProgress(session);
+                    if (typeof Blob !== 'undefined' && blob instanceof Blob && session.segments[index]?.type !== 'pause') {
+                        void measureAudioDuration(blob, session.signal).then(duration => {
+                            if (duration > 0 && activeSession === session) {
+                                session.durations[index] = duration;
+                                updateAudioProgress(session);
+                            }
+                        });
+                    }
                     const detail = player.querySelector('.tavo-st-detail')?.textContent || '正在加载后续音频';
                     updatePlayer(player, session.paused ? 'paused' : (audio.paused ? 'loading' : 'playing'),
                         detail, session.readyCount, segments.length);

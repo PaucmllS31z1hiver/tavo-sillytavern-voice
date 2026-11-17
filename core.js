@@ -5,8 +5,8 @@ export const DEFAULT_PROMPT = [
     '【朗读结构规则】',
     '正常完成角色扮演回复后，在回复末尾追加一个机器可读的朗读结构块。它只供朗读扩展使用，不能改变正文、剧情、人设或语气，也不能把规则原文写进正文。',
     '结构块使用 {{OPEN_MARKER}} 开始，使用 {{CLOSE_MARKER}} 结束；块内只能是严格 JSON 数组，不要使用 Markdown 围栏。',
-    '每条记录包含 role_name、text_content、emotion_name、strength_name、minimax_segments。role_name 只能是旁白、主角、女主、男NPC、女NPC、未知角色。strength_name 固定为空字符串。',
-    '结合角色卡、用户人设和聊天上下文判断说话人；不要默认把用户当成主角。已明确的主角姓名标为主角，已明确的女主姓名标为女主。',
+    '每条记录包含 role_name、text_content、emotion_name、strength_name、minimax_segments。role_name 只能是旁白、主角、女主一、女主二、女主三、女主四、NPC一、NPC二、男NPC、女NPC、未知角色。strength_name 固定为空字符串。',
+    '结合角色卡、用户人设和聊天上下文判断说话人；不要默认把用户当成主角。主角姓名标为主角；女主姓名对应女主一，有多位女主时按角色卡身份对应女主二至女主四；角色卡中明确编号的 NPC 对应 NPC一或 NPC二；无法绑定且没有编号的男性和女性角色仍分别使用男NPC和女NPC。',
     '旁白和对白按原文顺序拆开。text_content 与该条所有 text 片段拼接结果必须完全一致；所有 text_content 拼接后必须保留正文全部文字和顺序，仅可去掉对白最外层引号。不要输出空记录。',
     '每个 minimax_segments 片段为 text、sound 或 pause。text 必须包含 emotion，使用 happy、sad、angry、fearful、disgusted、surprised、calm 或 null。sound 标签限于 emm、laughs、chuckle、humming、coughs、clear-throat、breath、inhale、exhale、pant、sighs、gasps、sniffs、groans、burps、lip-smacking、sneezes、snorts、hissing。pause 只用于正文明确要求的句中停顿。',
     '旁白只能使用普通 text，不能添加 emotion、sound 或 pause。角色情绪和声音只属于对应对白；没有明确依据时使用 null，不要从上一句继承。',
@@ -33,6 +33,30 @@ export function migratePromptSettings(settings, stored, defaults, legacyDefault)
             }
         }
         settings.promptMigrationVersion = 1;
+    }
+
+    if (!(Number(source.promptRoleMigrationVersion) >= 2)) {
+        const previousDefault = String(settings.promptSplit || source.prompt || '').trim()
+            .replace('role_name 只能是旁白、主角、女主、男NPC、女NPC、未知角色。',
+                'role_name 只能是旁白、主角、女主一、女主二、女主三、女主四、NPC一、NPC二、男NPC、女NPC、未知角色。')
+            .replace('已明确的主角姓名标为主角，已明确的女主姓名标为女主。',
+                '主角姓名标为主角；女主姓名对应女主一，有多位女主时按角色卡身份对应女主二至女主四；角色卡中明确编号的 NPC 对应 NPC一或 NPC二；无法绑定且没有编号的男性和女性角色仍分别使用男NPC和女NPC。');
+        if (previousDefault === String(legacyDefault || '').trim()) {
+            settings.promptSplit = defaults.split;
+            if (!String(settings.promptPerformance || '').trim()) {
+                settings.promptPerformance = defaults.performance;
+            }
+        } else {
+            settings.promptSplit = String(settings.promptSplit || '')
+                .replace('role_name 只能使用：旁白、主角、女主、男NPC、女NPC、未知角色。',
+                    'role_name 只能使用：旁白、主角、女主一、女主二、女主三、女主四、NPC一、NPC二、男NPC、女NPC、未知角色。')
+                .replace('女主姓名对应的对白使用“女主”。只有无法绑定到主角或女主的男性角色才使用“男NPC”。',
+                    '女主姓名对应的对白使用“女主一”；有多位女主时，按角色卡中的身份对应使用“女主二”到“女主四”。角色卡中明确编号的 NPC 使用对应的“NPC一”或“NPC二”。只有无法绑定到主角或女主、也没有编号的男性角色才使用“男NPC”；未编号的女性角色仍使用“女NPC”。')
+                .replace('若系统设定或历史上下文已明确主角/女主姓名，对白必须按姓名绑定到“主角”或“女主”，不要因为一时称呼变化改成男NPC/女NPC。',
+                    '若系统设定或历史上下文已明确主角/女主姓名，对白必须按姓名绑定到“主角”或对应的“女主一”至“女主四”，不要因为一时称呼变化改成男NPC/女NPC。')
+                .replace(/("role_name"\s*:\s*)"女主"/g, '$1"女主一"');
+        }
+        settings.promptRoleMigrationVersion = 2;
     }
 
     settings.prompt = [settings.promptSplit, settings.promptPerformance].filter(Boolean).join('\n\n');
@@ -139,7 +163,12 @@ function normalizeRole(value) {
     const role = String(value ?? '').trim().toLowerCase().replace(/[\s_-]/g, '');
     if (['旁白', 'narrator', 'narration'].includes(role)) return '旁白';
     if (['主角', '男主', '男主角', 'protagonist', 'hero'].includes(role)) return '主角';
-    if (['女主', '女主角', 'heroine'].includes(role)) return '女主';
+    if (['女主', '女主角', '女主一', 'heroine', 'femalelead', 'femalelead1'].includes(role)) return '女主一';
+    if (['女主二', 'femalelead2', 'heroine2'].includes(role)) return '女主二';
+    if (['女主三', 'femalelead3', 'heroine3'].includes(role)) return '女主三';
+    if (['女主四', 'femalelead4', 'heroine4'].includes(role)) return '女主四';
+    if (['npc一', 'npc1'].includes(role)) return 'NPC一';
+    if (['npc二', 'npc2'].includes(role)) return 'NPC二';
     if (['男npc', '男性npc', 'malenpc'].includes(role)) return '男NPC';
     if (['女npc', '女性npc', 'femalenpc'].includes(role)) return '女NPC';
     if (role === '未知角色' || role === 'unknown' || role === 'unknownspeaker') return '未知角色';
@@ -208,10 +237,13 @@ function normalizeRows(raw) {
     return normalized;
 }
 
-function comparableReadingText(value) {
-    return String(value)
-        .replace(/(?<!\*)\*\*(?!\*)(\S(?:[^*\n]*?\S)?)\*\*(?!\*)/g, '$1')
-        .replace(/[\s"“”「」『』]/g, '');
+function stripBoldMarkers(value) {
+    return String(value).replace(/(?<!\*)\*\*(?!\*)(\S(?:[^*\n]*?\S)?)\*\*(?!\*)/g, '$1');
+}
+
+function rowsMatchReadable(rows, readable) {
+    const comparable = value => stripBoldMarkers(value).replace(/["“”「」『』‘’]/g, '');
+    return comparable(rows.map(row => row.text_content).join('')) === comparable(readable);
 }
 
 export function extractReading(value) {
@@ -219,9 +251,7 @@ export function extractReading(value) {
     const block = extractRawBlock(source);
     const clean = stripReadingBlocks(source).trimEnd();
     let rows = block ? normalizeRows(block.raw) : null;
-    if (rows && comparableReadingText(rows.map(row => row.text_content).join('')) !== comparableReadingText(clean)) {
-        rows = null;
-    }
+    if (rows && !rowsMatchReadable(rows, clean)) rows = null;
     return { rows, clean, readable: clean, hasStructureBlock: Boolean(block) };
 }
 
@@ -289,7 +319,15 @@ function roleKind(role) {
 function getRoleVoice(role, settings) {
     const voices = settings.voices || {};
     if (role === '主角') return voices.protagonist || settings.dialogueVoice;
-    if (role === '女主') return voices.heroine || settings.dialogueVoice;
+    if (role === '女主一') {
+        const selected = Object.prototype.hasOwnProperty.call(voices, 'heroine1') ? voices.heroine1 : voices.heroine;
+        return selected || settings.dialogueVoice;
+    }
+    if (role === '女主二') return voices.heroine2 || settings.dialogueVoice;
+    if (role === '女主三') return voices.heroine3 || settings.dialogueVoice;
+    if (role === '女主四') return voices.heroine4 || settings.dialogueVoice;
+    if (role === 'NPC一') return voices.npc1 || settings.dialogueVoice;
+    if (role === 'NPC二') return voices.npc2 || settings.dialogueVoice;
     if (role === '男NPC') return voices.maleNpc || settings.dialogueVoice;
     if (role === '女NPC') return voices.femaleNpc || settings.dialogueVoice;
     return role === '旁白' ? settings.narratorVoice : settings.dialogueVoice;
@@ -305,6 +343,10 @@ function textChunksForRow(row) {
     for (const part of row.minimax_segments) {
         if (part.type === 'pause') {
             current = null;
+            if (pendingSound) {
+                chunks.push({ type: 'text', text: pendingSound, emotion: null });
+                pendingSound = '';
+            }
             chunks.push({ type: 'pause', seconds: part.seconds });
         } else if (part.type === 'sound') {
             if (current) current.text += '(' + part.tag + ')';
