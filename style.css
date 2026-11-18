@@ -52,14 +52,82 @@
     margin-top: 0.65rem;
 }
 
+.tavo-st-settings-title {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.45rem;
+}
+
+.tavo-st-version {
+    font-size: 0.78em;
+    font-weight: 500;
+    opacity: 0.7;
+    letter-spacing: 0.02em;
+}
+
+.tavo-st-settings-hint {
+    margin-top: 0.55rem;
+    font-size: 0.88em;
+    line-height: 1.45;
+    opacity: 0.78;
+}
+
 .tavo-st-prompt-section {
     display: grid;
     gap: 0.6rem;
     margin-top: 0.75rem;
-    padding: 0.75rem;
-    border: 1px solid var(--SmartThemeBorderColor, rgba(127, 127, 127, 0.3));
-    border-radius: 6px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor, currentColor) 96%, var(--SmartThemeQuoteColor, #3b8c68));
+    padding: 0.85rem;
+    border: 1px solid var(--SmartThemeBorderColor, color-mix(in srgb, currentColor 18%, transparent));
+    border-radius: 10px;
+    /* Tinted toward the theme's reading colour, this card becomes dark in dark themes
+       and the same dark surface in light themes, so the text never sits white-on-white. */
+    color: #e8e8e2;
+    background: color-mix(in srgb, #1b1b1f 88%, var(--SmartThemeQuoteColor, #3b8c68) 12%);
+}
+
+.tavo-st-prompt-section .tavo-st-prompt-title,
+.tavo-st-prompt-section .tavo-st-prompt-description,
+.tavo-st-prompt-section .tavo-st-prompt-input > * {
+    color: #e8e8e2;
+}
+
+.tavo-st-prompt-input textarea,
+.tavo-st-prompt-section textarea,
+.tavo-st-settings-grid input,
+.tavo-st-settings-grid select,
+#tavo_voice_settings .text_pole {
+    color: var(--SmartThemeTextColor, var(--SmartThemeBodyColor, currentColor)) !important;
+    background-color: var(--SmartThemeBlurTintColor, #18181c) !important;
+    border: 1px solid var(--SmartThemeBorderColor, color-mix(in srgb, currentColor 26%, transparent)) !important;
+}
+
+.tavo-st-prompt-section textarea {
+    color: #e8e8e2 !important;
+    background-color: #24242a !important;
+    border: 1px solid rgba(232, 232, 226, 0.22) !important;
+}
+
+.tavo-st-prompt-input textarea::placeholder,
+#tavo_voice_settings .text_pole::placeholder {
+    color: var(--SmartThemeEmColor, currentColor);
+    opacity: 0.8;
+}
+
+.tavo-st-prompt-section .menu_button {
+    color: var(--SmartThemeBodyColor, currentColor);
+    border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+    background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.tavo-st-prompt-section .menu_button:hover {
+    background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.tavo-st-prompt-textarea {
+    min-height: 22rem;
+    font-size: 0.92em;
+    line-height: 1.55;
+    white-space: pre-wrap;
 }
 
 .tavo-st-prompt-heading {
@@ -108,17 +176,17 @@
     grid-template-columns: 36px minmax(0, 1fr) 34px;
     align-items: center;
     gap: 0.5rem;
-    width: 100%;
+    width: calc(100% - 0.5rem);
     min-height: 58px;
     box-sizing: border-box;
-    margin-top: 0.5rem;
-    padding: 0.5rem;
-    border: 1px solid rgba(127, 127, 127, 0.28);
-    border-color: color-mix(in srgb, currentColor 16%, transparent);
-    border-radius: 8px;
-    background: rgba(127, 127, 127, 0.06);
-    background: color-mix(in srgb, currentColor 5%, transparent);
-    color: var(--SmartThemeTextColor, inherit);
+    margin: 0.6rem 0.25rem 0.3rem;
+    padding: 0.55rem 0.6rem;
+    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    border-radius: 12px;
+    color: var(--SmartThemeBodyColor, inherit);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #202024) 76%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #202024) 78%, var(--SmartThemeQuoteColor, #287653));
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
 }
 
 .tavo-st-player button {

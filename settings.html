@@ -1,6 +1,6 @@
 <div id="tavo_voice_settings" class="inline-drawer">
     <div class="inline-drawer-toggle inline-drawer-header">
-        <b>Tavo Voice Player</b>
+        <span class="tavo-st-settings-title"><b>Tavo Voice Player</b><span class="tavo-st-version" data-plugin-version>v0.3.0</span></span>
         <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
     </div>
     <div class="inline-drawer-content">
@@ -21,12 +21,7 @@
                     <option value="dialogue">仅对白</option>
                 </select>
             </label>
-            <label>旁白音色
-                <select class="text_pole" data-setting="narratorVoice" data-voice-picker></select>
-            </label>
-            <label>对白默认音色
-                <select class="text_pole" data-setting="dialogueVoice" data-voice-picker></select>
-            </label>
+
             <label>音频格式
                 <select class="text_pole" data-setting="audioFormat">
                     <option value="wav">WAV</option>
@@ -55,37 +50,41 @@
             </label>
         </div>
 
-        <details class="tavo-st-settings-details">
+        <details class="tavo-st-settings-details" open>
             <summary>角色音色</summary>
             <div class="tavo-st-settings-grid">
+                <label>旁白
+                    <select class="text_pole" data-setting="voices.narrator" data-voice-picker></select>
+                </label>
                 <label>主角
-                    <select class="text_pole" data-setting="voices.protagonist" data-voice-picker><option value="">跟随对白默认音色</option></select>
+                    <select class="text_pole" data-setting="voices.protagonist" data-voice-picker></select>
                 </label>
                 <label>女主一
-                    <select class="text_pole" data-setting="voices.heroine1" data-voice-picker><option value="">跟随对白默认音色</option></select>
+                    <select class="text_pole" data-setting="voices.heroine1" data-voice-picker></select>
                 </label>
                 <label>女主二
-                    <select class="text_pole" data-setting="voices.heroine2" data-voice-picker><option value="">跟随对白默认音色</option></select>
+                    <select class="text_pole" data-setting="voices.heroine2" data-voice-picker></select>
                 </label>
                 <label>女主三
-                    <select class="text_pole" data-setting="voices.heroine3" data-voice-picker><option value="">跟随对白默认音色</option></select>
+                    <select class="text_pole" data-setting="voices.heroine3" data-voice-picker></select>
                 </label>
                 <label>女主四
-                    <select class="text_pole" data-setting="voices.heroine4" data-voice-picker><option value="">跟随对白默认音色</option></select>
+                    <select class="text_pole" data-setting="voices.heroine4" data-voice-picker></select>
                 </label>
-                <label>NPC一
-                    <select class="text_pole" data-setting="voices.npc1" data-voice-picker><option value="">跟随对白默认音色</option></select>
+                <label>男NPC一
+                    <select class="text_pole" data-setting="voices.maleNpc1" data-voice-picker></select>
                 </label>
-                <label>NPC二
-                    <select class="text_pole" data-setting="voices.npc2" data-voice-picker><option value="">跟随对白默认音色</option></select>
+                <label>男NPC二
+                    <select class="text_pole" data-setting="voices.maleNpc2" data-voice-picker></select>
                 </label>
-                <label>男 NPC
-                    <select class="text_pole" data-setting="voices.maleNpc" data-voice-picker><option value="">跟随对白默认音色</option></select>
+                <label>女NPC一
+                    <select class="text_pole" data-setting="voices.femaleNpc1" data-voice-picker></select>
                 </label>
-                <label>女 NPC
-                    <select class="text_pole" data-setting="voices.femaleNpc" data-voice-picker><option value="">跟随对白默认音色</option></select>
+                <label>女NPC二
+                    <select class="text_pole" data-setting="voices.femaleNpc2" data-voice-picker></select>
                 </label>
             </div>
+            <div class="tavo-st-settings-hint">超过角色数量时，第五位及以后的女主使用女主四音色；第三位及以后的男、女 NPC 分别使用男NPC二、女NPC二音色。</div>
         </details>
 
         <details class="tavo-st-settings-details" open>
@@ -113,32 +112,19 @@
                     <input class="text_pole" data-setting="promptDepth" type="number" min="0" max="10000" step="1">
                 </label>
             </div>
-            <section class="tavo-st-prompt-section" aria-labelledby="tavo-st-prompt-split-title">
+            <section class="tavo-st-prompt-section" aria-labelledby="tavo-st-prompt-title">
                 <div class="tavo-st-prompt-heading">
                     <div>
-                        <div class="tavo-st-prompt-title" id="tavo-st-prompt-split-title">角色、旁白与对白拆分</div>
-                        <div class="tavo-st-prompt-description">定义如何识别旁白、角色和对白，并为对白标注说话角色。</div>
+                        <div class="tavo-st-prompt-title" id="tavo-st-prompt-title">朗读规则</div>
+                        <div class="tavo-st-prompt-description">角色拆分、旁白与对白、情绪、音效和停顿都在这一个提示词里。修改后会自动用于下一轮回复。</div>
                     </div>
-                    <button class="menu_button" type="button" data-action="reset-prompt-split">恢复此段默认提示词</button>
+                    <button class="menu_button" type="button" data-action="reset-prompt">恢复默认提示词</button>
                 </div>
-                <label class="tavo-st-prompt-input">拆分规则
-                    <textarea class="text_pole textarea_compact" data-setting="promptSplit" rows="8"></textarea>
-                </label>
-            </section>
-            <section class="tavo-st-prompt-section" aria-labelledby="tavo-st-prompt-performance-title">
-                <div class="tavo-st-prompt-heading">
-                    <div>
-                        <div class="tavo-st-prompt-title" id="tavo-st-prompt-performance-title">情绪、音效与停顿</div>
-                        <div class="tavo-st-prompt-description">定义情绪标签、音效标记、停顿和语速的表达方式。</div>
-                    </div>
-                    <button class="menu_button" type="button" data-action="reset-prompt-performance">恢复此段默认提示词</button>
-                </div>
-                <label class="tavo-st-prompt-input">表现规则
-                    <textarea class="text_pole textarea_compact" data-setting="promptPerformance" rows="8"></textarea>
+                <label class="tavo-st-prompt-input">提示词
+                    <textarea class="text_pole textarea_compact tavo-st-prompt-textarea" data-setting="prompt" rows="18"></textarea>
                 </label>
             </section>
             <div class="tavo-st-settings-actions">
-                <button class="menu_button" type="button" data-action="reset-prompt">恢复默认提示词</button>
                 <label class="tavo-st-check">
                     <input data-setting="contextHideStructure" type="checkbox">
                     <span>用 HTML 注释隐藏朗读结构</span>

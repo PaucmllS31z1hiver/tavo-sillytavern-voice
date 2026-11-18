@@ -2,12 +2,14 @@ import {
     DEFAULT_PROMPT,
     MODULE_NAME,
     PROMPT_KEY,
+    VERSION,
     buildAudioSegments,
     buildTimeline,
     extractReading,
     formatTime,
     getActiveReplyText,
     makeAudioRequestBody,
+    mergeVoiceSettings,
     migratePromptSettings,
     playInOrder,
     sanitizeReadableText,
@@ -21,8 +23,6 @@ const DEFAULT_SETTINGS = {
     apiKey: '',
     model: 'speech-2.8-hd',
     playbackMode: 'all',
-    narratorVoice: 'moss_audio_46b3651e-a85e-11f1-8957-ba6628da9bfd',
-    dialogueVoice: 'moss_audio_1d309c5c-a1ff-11f1-acee-26b6a8502990',
     audioFormat: 'wav',
     sampleRate: 32000,
     speed: 1,
@@ -30,24 +30,22 @@ const DEFAULT_SETTINGS = {
     languageBoost: 'Chinese',
     contextHideStructure: true,
     voices: {
+        narrator: 'moss_audio_46b3651e-a85e-11f1-8957-ba6628da9bfd',
         protagonist: 'moss_audio_cbb39430-a862-11f1-aa1d-d2651eedd987',
-        heroine: 'moss_audio_499a9275-a861-11f1-b7bb-b695f68c934a',
         heroine1: 'moss_audio_499a9275-a861-11f1-b7bb-b695f68c934a',
-        heroine2: '',
-        heroine3: '',
-        heroine4: '',
-        npc1: '',
-        npc2: '',
-        maleNpc: 'moss_audio_cbb39430-a862-11f1-aa1d-d2651eedd987',
-        femaleNpc: 'moss_audio_499a9275-a861-11f1-b7bb-b695f68c934a'
+        heroine2: 'moss_audio_1d309c5c-a1ff-11f1-acee-26b6a8502990',
+        heroine3: 'moss_audio_54ffe2af-a030-11f1-8957-ba6628da9bfd',
+        heroine4: 'moss_audio_40e2f4fa-a201-11f1-a626-8a59b47fb1f9',
+        maleNpc1: 'moss_audio_cbb39430-a862-11f1-aa1d-d2651eedd987',
+        maleNpc2: 'moss_audio_0bcb90c6-a204-11f1-b06d-eaacce949834',
+        femaleNpc1: 'moss_audio_499a9275-a861-11f1-b7bb-b695f68c934a',
+        femaleNpc2: 'moss_audio_1d309c5c-a1ff-11f1-acee-26b6a8502990'
     },
     promptEnabled: false,
     promptPosition: 0,
     promptRole: 0,
     promptDepth: 4,
-    prompt: DEFAULT_PROMPT,
-    promptSplit: '',
-    promptPerformance: ''
+    prompt: DEFAULT_PROMPT
 };
 
 const VOICE_PRESETS = [
@@ -96,11 +94,13 @@ const activeCacheWrites = new Set();
 
 function mergeSettings(defaults, stored) {
     const result = { ...defaults, ...(stored || {}) };
-    result.voices = { ...defaults.voices, ...(stored?.voices || {}) };
-    if (!Object.prototype.hasOwnProperty.call(stored?.voices || {}, 'heroine1') &&
-        Object.prototype.hasOwnProperty.call(stored?.voices || {}, 'heroine')) {
-        result.voices.heroine1 = stored.voices.heroine;
-    }
+    result.voices = mergeVoiceSettings(defaults.voices, stored);
+    delete result.narratorVoice;
+    delete result.dialogueVoice;
+    delete result.protagonistVoice;
+    delete result.heroineVoice;
+    delete result.maleNpcVoice;
+    delete result.femaleNpcVoice;
     return result;
 }
 
@@ -121,10 +121,7 @@ function setPath(object, path, value) {
 function buildPrompt() {
     const open = settings.contextHideStructure ? '<!--MINIMAX_TTS' : '[[MINIMAX_TTS]]';
     const close = settings.contextHideStructure ? '-->' : '[[/MINIMAX_TTS]]';
-    const prompt = [settings.promptSplit, settings.promptPerformance]
-        .map(value => String(value || '').trim())
-        .filter(Boolean)
-        .join('\n\n');
+    const prompt = String(settings.prompt || DEFAULT_PROMPT);
     return prompt
         .replaceAll('{{OPEN_MARKER}}', open)
         .replaceAll('{{CLOSE_MARKER}}', close)
@@ -132,7 +129,7 @@ function buildPrompt() {
         .replaceAll('-->', close);
 }
 
-let promptDefaults = { split: DEFAULT_PROMPT, performance: '' };
+let promptDefaults = { prompt: DEFAULT_PROMPT };
 
 async function loadPromptDefaults() {
     const read = async file => {
@@ -148,7 +145,7 @@ async function loadPromptDefaults() {
         const readable = value => value
             .replaceAll('{{OPEN_MARKER}}', '<!--MINIMAX_TTS')
             .replaceAll('{{CLOSE_MARKER}}', '-->');
-        promptDefaults = { split: readable(split), performance: readable(performance) };
+        promptDefaults = { prompt: [readable(split), readable(performance)].filter(Boolean).join('\n\n') };
     } catch (error) {
         console.error('Tavo Voice Player: prompt defaults failed to load', error);
     }
@@ -187,6 +184,8 @@ async function loadSettingsPanel() {
     settingsPanel = holder.firstElementChild;
     if (!settingsPanel) throw new Error('Could not render Tavo Voice Player settings.');
     document.getElementById('extensions_settings')?.append(settingsPanel);
+    const versionTag = settingsPanel.querySelector('[data-plugin-version]');
+    if (versionTag) versionTag.textContent = 'v' + VERSION;
     populateVoiceOptions();
     bindSettingsPanel();
     syncSettingsPanel();
@@ -231,23 +230,7 @@ function bindSettingsPanel() {
         if (!action) return;
         event.preventDefault();
         if (action === 'reset-prompt') {
-            settings.promptSplit = promptDefaults.split;
-            settings.promptPerformance = promptDefaults.performance;
-            settings.prompt = [settings.promptSplit, settings.promptPerformance].filter(Boolean).join('\n\n');
-            syncSettingsPanel();
-            context.saveSettingsDebounced();
-            updatePromptInjection();
-        }
-        if (action === 'reset-prompt-split') {
-            settings.promptSplit = promptDefaults.split;
-            settings.prompt = [settings.promptSplit, settings.promptPerformance].filter(Boolean).join('\n\n');
-            syncSettingsPanel();
-            context.saveSettingsDebounced();
-            updatePromptInjection();
-        }
-        if (action === 'reset-prompt-performance') {
-            settings.promptPerformance = promptDefaults.performance;
-            settings.prompt = [settings.promptSplit, settings.promptPerformance].filter(Boolean).join('\n\n');
+            settings.prompt = promptDefaults.prompt;
             syncSettingsPanel();
             context.saveSettingsDebounced();
             updatePromptInjection();
@@ -343,13 +326,13 @@ function refreshMessagePlayer(messageId) {
     const message = context.chat?.[index];
     const element = getMessageElement(messageId);
     if (!message || !element || message.is_user || message.is_system || element.getAttribute('is_user') === 'true') return;
-    const body = element.querySelector('.mes_text');
-    if (!body) return;
+    const block = element.querySelector('.mes_block');
+    if (!block) return;
 
     const signature = String(message.swipe_id ?? 0) + ':' + getActiveReplyText(message);
     let player = element.querySelector('.tavo-st-player');
     if (!player) player = createPlayer();
-    if (player.parentElement !== body) body.append(player);
+    if (player.parentElement !== block) block.append(player);
     if (player.dataset.signature && player.dataset.signature !== signature &&
         activeSession?.messageId === index) stopSession('切换了回复');
     player.dataset.signature = signature;
@@ -815,9 +798,8 @@ async function startPlayback(player, messageId, forceRegenerate = false, startTa
     const reading = extractReading(rawText);
     reading.readable = sanitizeReadableText(reading.clean);
     if (reading.hasStructureBlock && !reading.rows) {
-        console.warn('Tavo Voice Player: reading structure could not be parsed');
-        notifyError('朗读结构格式无效，已停止播放。请检查回复末尾 MINIMAX_TTS 结构块中的 JSON 和正文对应内容。');
-        return;
+        // A damaged structure block must not stop playback: fall back to the visible text.
+        console.warn('Tavo Voice Player: reading structure could not be parsed, using plain text fallback');
     }
     const segments = buildAudioSegments(reading, settings);
     if (!segments.length) {
@@ -848,7 +830,9 @@ async function startPlayback(player, messageId, forceRegenerate = false, startTa
         total: segments.length,
         currentIndex: Math.min(startTarget?.index ?? 0, segments.length - 1),
         pauseElapsed: 0,
-        readingMode: reading.rows ? '结构朗读' : (reading.hasStructureBlock ? '结构异常，正文兼容' : '普通文本')
+        readingMode: reading.rows
+            ? (reading.matchesVisibleProse ? '结构朗读' : '结构朗读 · 正文含附加内容')
+            : (reading.hasStructureBlock ? '结构异常，正文兼容' : '普通文本')
     };
     activeSession = session;
     audio.addEventListener('timeupdate', () => updateAudioProgress(session));
