@@ -4,7 +4,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "Tavo Voice Player",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "minimum_client_version": "1.15.0",
   "generate_interceptor": "tavoVoicePromptInterceptor"
 }

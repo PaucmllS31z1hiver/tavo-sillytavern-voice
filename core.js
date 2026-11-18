@@ -241,9 +241,93 @@ function stripBoldMarkers(value) {
     return String(value).replace(/(?<!\*)\*\*(?!\*)(\S(?:[^*\n]*?\S)?)\*\*(?!\*)/g, '$1');
 }
 
+function stripHtmlControlBlocks(value) {
+    const proseTags = new Set([
+        'p', 'span', 'br', 'em', 'strong', 'b', 'i', 'u', 's', 'del', 'ins', 'small', 'mark',
+        'sub', 'sup', 'blockquote', 'q', 'a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'ul', 'ol', 'li', 'dl', 'dt', 'dd', 'ruby', 'rt', 'rp'
+    ]);
+    const voidTags = new Set([
+        'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta',
+        'param', 'source', 'track', 'wbr'
+    ]);
+    const controlTags = new Set([
+        'html', 'head', 'body', 'script', 'style', 'template', 'noscript', 'svg', 'canvas',
+        'iframe', 'form', 'button', 'select', 'textarea', 'table', 'nav', 'div', 'section',
+        'aside', 'header', 'footer', 'main', 'details', 'dialog', 'menu', 'figure', 'picture',
+        'audio', 'video', 'pre', 'code', 'analysis', 'updatevariable', 'update', 'state',
+        'status', 'variable', 'variables', 'thinking', 'think', 'tool', 'tool_call',
+        'frontend', 'display', 'panel', 'hud'
+    ]);
+    const source = String(value ?? '').replace(/\\(?=<\/?(?:UpdateVariable|Analysis|StatusPlaceHolderImpl)\b)/gi, '');
+    const marker = /\\*<\s*(\/?)\s*([A-Za-z][A-Za-z0-9:_-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/g;
+    const stack = [];
+    let output = '';
+    let cursor = 0;
+    let match;
+
+    while ((match = marker.exec(source))) {
+        const tag = match[2].toLowerCase();
+        if (proseTags.has(tag) && !controlTags.has(tag)) continue;
+        if (!stack.length) output += source.slice(cursor, match.index);
+        if (match[1]) {
+            const matchingIndex = stack.lastIndexOf(tag);
+            if (matchingIndex >= 0) stack.length = matchingIndex;
+        } else if (!voidTags.has(tag) && !/\/\s*>$/.test(match[0])) {
+            stack.push(tag);
+        }
+        cursor = marker.lastIndex;
+    }
+    if (!stack.length) output += source.slice(cursor);
+    return output;
+}
+
+function stripBracketControlBlocks(value) {
+    const knownTags = new Set([
+        'INSIDE', 'UI', 'STATUS', 'STATE', 'UPDATE', 'VARIABLE', 'VARIABLES', 'THINK',
+        'THINKING', 'TOOL', 'TOOL_CALL', 'TEMPLATE', 'FRONTEND', 'DISPLAY', 'PANEL', 'HUD',
+        'HTML', 'SCRIPT', 'STYLE', 'SYSTEM'
+    ]);
+    const marker = /\[\[\s*(\/?)\s*([A-Za-z][A-Za-z0-9_-]{1,31})(?:\s+[^\]]*)?\s*\]\]/g;
+    const source = String(value ?? '');
+    const stack = [];
+    let output = '';
+    let cursor = 0;
+    let match;
+
+    while ((match = marker.exec(source))) {
+        const rawTag = match[2];
+        const tag = rawTag.toUpperCase();
+        if (!knownTags.has(tag) && rawTag !== tag) continue;
+        if (!stack.length) output += source.slice(cursor, match.index);
+        if (match[1]) {
+            const matchingIndex = stack.lastIndexOf(tag);
+            if (matchingIndex >= 0) stack.length = matchingIndex;
+        } else {
+            stack.push(tag);
+        }
+        cursor = marker.lastIndex;
+    }
+    if (!stack.length) output += source.slice(cursor);
+    return output.replace(/\[\[\s*\/?[A-Za-z][A-Za-z0-9_-]{1,31}[^\]]*\]\]/g, '');
+}
+
+function stripNonSpeechBlocks(value) {
+    return stripBracketControlBlocks(stripHtmlControlBlocks(
+        String(value ?? '')
+            .replace(/<!--[^]*?-->/g, '')
+            .replace(/<%[^]*?%>/g, '')
+            .replace(/\x60{3}[^]*?(?:\x60{3}|$)/g, '')
+            .replace(/~~~[^]*?(?:~~~|$)/g, '')
+    ));
+}
+
 function rowsMatchReadable(rows, readable) {
-    const comparable = value => stripBoldMarkers(value).replace(/["“”「」『』‘’]/g, '');
-    return comparable(rows.map(row => row.text_content).join('')) === comparable(readable);
+    const comparable = value => stripBoldMarkers(value).replace(/["“”「」『』‘’]/g, '').trim();
+    const visibleProse = stripNonSpeechBlocks(readable)
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<[^>]+>/g, '');
+    return comparable(rows.map(row => row.text_content).join('')) === comparable(visibleProse);
 }
 
 export function extractReading(value) {
@@ -256,10 +340,8 @@ export function extractReading(value) {
 }
 
 export function sanitizeReadableText(value) {
-    return stripReadingBlocks(value)
-        .replace(/<!--[\s\S]*?-->/g, ' ')
-        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    return stripNonSpeechBlocks(stripReadingBlocks(value))
+        .replace(/<br\s*\/?>/gi, '\n')
         .replace(/<[^>]+>/g, ' ')
         .replace(/\x60{3}[\s\S]*?\x60{3}/g, ' ')
         .replace(/\[\[(?:INSIDE|\/INSIDE|STATUS|\/STATUS)[^\]]*\]\]/gi, ' ')
