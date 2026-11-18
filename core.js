@@ -1,6 +1,6 @@
 export const MODULE_NAME = 'tavo_voice_player';
 export const PROMPT_KEY = 'tavo_voice_player_reading_rules';
-export const VERSION = '0.3.2';
+export const VERSION = '0.3.3';
 
 export const SAME_ROLE_PROMPT_RULE = '【同角色连续内容合并】同一个 role_name 的连续正文必须合并：同一角色连续多行、连续多个句子，只能生成同一条记录；同一角色同一情绪下的连续 text 必须合并成一个 text 片段，text_content 要原样保留所有换行和标点。只有角色变化、情绪变化、明确的 pause，或明确的声音/动作边界才能新开记录或片段。不得因为换行、句号或句子数量，把同一角色拆成多条记录或多次语音合成。';
 export const DIALOGUE_TONE_PROMPT_RULE = '【对白语气标签】对白应结合正文、人物状态和上下文主动选择合适的声音标签，并鼓励多用，让朗读有明显变化。“鼓励多用”不是每句固定添加，而是只要上下文已经提供了合理依据，就优先考虑添加合适标签；正文没有直接写“笑了”也不代表不能使用语气。例如上下文明显欢快、人物正在打趣、气氛轻松时，可以使用 chuckle 或 laughs；无奈、释然、疲惫时可以使用 sighs；尴尬开口时可以使用 clear-throat；紧张或急促时可以使用 breath、inhale、exhale 或 pant；惊讶时可以使用 gasps；冷淡嘲讽时可以使用 snorts 或 hissing。明确出现笑了、笑出声、哈哈哈、咳嗽、清嗓、叹气、喘气、吸气、倒吸气、哼唱、冷哼、惊呼等实际声音时，必须在对应对白附近添加匹配标签。声音标签只放在对白的 minimax_segments 中，不得写进 text，不得修改正文，不得让旁白音色发出角色声音。声音标签不等于 emotion，不能因为使用 laughs 或 chuckle 就自动设置 happy，也不能因为使用 sighs 就自动设置 sad。没有场景依据时不添加，同一声音事件不重复添加。';

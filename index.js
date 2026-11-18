@@ -221,6 +221,11 @@ function bindSettingsPanel() {
                 : (input.type === 'number' || input.type === 'range' ? Number(input.value) : input.value);
             setPath(settings, path, value);
             if (input.type === 'range') updateRangeOutput(path, input.value);
+            if (path === 'playbackMode') {
+                for (const player of document.querySelectorAll('.tavo-st-player[data-state="idle"]')) {
+                    player.querySelector('.tavo-st-detail').textContent = playbackModeLabel();
+                }
+            }
             context.saveSettingsDebounced();
             updatePromptInjection();
             updateDepthVisibility();
@@ -285,26 +290,30 @@ function getMessageElement(messageId) {
         .find(element => element.getAttribute('mesid') === target) || null;
 }
 
+function playbackModeLabel() {
+    return { narrator: '仅旁白', dialogue: '仅角色对话' }[settings.playbackMode] || '旁白 + 对话';
+}
+
 function createPlayer() {
     const root = document.createElement('div');
     root.className = 'tavo-st-player';
     root.dataset.state = 'idle';
     root.innerHTML = [
-        '<button class="tavo-st-play" type="button" data-action="play" title="播放" aria-label="播放">',
-        '<i class="fa-solid fa-play" aria-hidden="true"></i></button>',
+        '<button class="tavo-st-play" type="button" data-action="play" data-icon="play" title="播放语音" aria-label="播放语音"></button>',
         '<div class="tavo-st-body">',
-        '<div class="tavo-st-head"><span class="tavo-st-title">Tavo 朗读</span><span class="tavo-st-time">0:00 / 0:00</span></div>',
-        '<input class="tavo-st-progress" type="range" min="0" max="100" step="0.1" value="0" aria-label="整段回复进度">',
-        '<div class="tavo-st-foot"><span class="tavo-st-detail">点击播放</span><span class="tavo-st-ready"></span></div>',
+        '<div class="tavo-st-head"><span class="tavo-st-title">语音朗读</span><span class="tavo-st-time">0:00 / 0:00</span></div>',
+        '<div class="tavo-st-scrubber"><div class="tavo-st-rail" aria-hidden="true"></div>',
+        '<input class="tavo-st-progress" type="range" min="0" max="100" step="0.1" value="0" aria-label="拖动调整整段回复的播放进度" disabled></div>',
+        '<div class="tavo-st-foot"><span class="tavo-st-detail"></span><span class="tavo-st-ready"></span></div>',
         '</div>',
-        '<button class="tavo-st-more" type="button" data-action="menu" title="更多操作" aria-label="更多操作" aria-expanded="false">',
-        '<i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>',
+        '<button class="tavo-st-more" type="button" data-action="menu" title="更多语音操作" aria-label="更多语音操作" aria-expanded="false"></button>',
         '<div class="tavo-st-menu" hidden>',
         '<button type="button" data-action="stop">停止</button>',
         '<button type="button" data-action="regenerate">重新生成</button>',
         '<button type="button" data-action="clear-cache">清空音频缓存</button>',
         '</div>'
     ].join('');
+    root.querySelector('.tavo-st-detail').textContent = playbackModeLabel();
     const track = root.querySelector('.tavo-st-progress');
     track.addEventListener('pointerdown', () => { root.dataset.seeking = 'true'; });
     track.addEventListener('input', () => previewTimeline(root));
@@ -348,18 +357,35 @@ function refreshAllPlayers() {
     }
 }
 
-function updatePlayer(player, state, detail, ready, total) {
+function updatePlayer(player, state, detail, ready, total, title = '语音朗读') {
     if (!player?.isConnected) return;
     player.dataset.state = state;
     const button = player.querySelector('.tavo-st-play');
-    const icon = button.querySelector('i');
-    const paused = state === 'paused';
-    icon.className = 'fa-solid ' + (state === 'playing' ? 'fa-pause' : (paused ? 'fa-play' : 'fa-play'));
-    button.title = state === 'playing' ? '暂停' : (paused ? '继续播放' : '播放');
+    const running = state !== 'idle' && state !== 'paused';
+    button.dataset.icon = running ? 'pause' : 'play';
+    button.title = running ? '暂停' : (state === 'paused' ? '继续播放' : '播放语音');
     button.setAttribute('aria-label', button.title);
-    player.querySelector('.tavo-st-progress').disabled = !['loading', 'playing', 'paused'].includes(state);
-    player.querySelector('.tavo-st-detail').textContent = detail || '点击播放';
+    player.querySelector('.tavo-st-progress').disabled = state === 'idle';
+    player.querySelector('.tavo-st-title').textContent = title;
+    player.querySelector('.tavo-st-detail').textContent = detail || playbackModeLabel();
+    updateReadyCount(player, ready, total);
+}
+
+function updateReadyCount(player, ready, total) {
     player.querySelector('.tavo-st-ready').textContent = total ? '已就绪 ' + ready + '/' + total : '';
+}
+
+function renderSession(session) {
+    updatePlayer(session.player, session.paused ? 'paused' : session.phase,
+        session.paused ? '已暂停 · 点击继续' : session.segmentLabel,
+        session.readyCount, session.total, session.paused ? '语音朗读' : session.title);
+}
+
+function setSessionPhase(session, phase, title) {
+    if (activeSession !== session || session.signal.aborted) return;
+    session.phase = phase;
+    session.title = title;
+    renderSession(session);
 }
 
 function unlockAudio() {
@@ -536,47 +562,8 @@ async function requestAudio(segment, signal) {
     return responseToAudioBlob(response);
 }
 
-function measureAudioDuration(blob, signal) {
-    return new Promise(resolve => {
-        let audio;
-        let url;
-        let timer;
-        let settled = false;
-        const finish = duration => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            signal?.removeEventListener('abort', onAbort);
-            audio?.removeEventListener('loadedmetadata', onLoaded);
-            audio?.removeEventListener('error', onError);
-            audio?.pause();
-            audio?.removeAttribute('src');
-            audio?.load();
-            if (url) URL.revokeObjectURL(url);
-            const value = Number(duration);
-            resolve(Number.isFinite(value) && value > 0 ? value : 0);
-        };
-        const onLoaded = () => finish(audio.duration);
-        const onError = () => finish(0);
-        const onAbort = () => finish(0);
-        try {
-            audio = new Audio();
-            audio.preload = 'metadata';
-            url = URL.createObjectURL(blob);
-            audio.addEventListener('loadedmetadata', onLoaded, { once: true });
-            audio.addEventListener('error', onError, { once: true });
-            signal?.addEventListener('abort', onAbort, { once: true });
-            timer = setTimeout(() => finish(0), 3000);
-            audio.src = url;
-            audio.load();
-        } catch {
-            finish(0);
-        }
-    });
-}
-
 function waitForResume(session) {
-    if (session.stopped) return Promise.reject(new DOMException('Stopped', 'AbortError'));
+    if (session.signal.aborted) return Promise.reject(session.signal.reason);
     if (!session.paused) return Promise.resolve();
     return new Promise((resolve, reject) => {
         let settled = false;
@@ -615,6 +602,7 @@ async function playPauseSegment(session, seconds, initialElapsed = 0) {
     const duration = Math.max(0, Number(seconds) || 0) * 1000;
     let elapsed = Math.min(duration, Math.max(0, Number(initialElapsed) || 0) * 1000);
     session.pauseElapsed = elapsed / 1000;
+    updateAudioProgress(session);
     while (elapsed < duration) {
         await waitForResume(session);
         const started = Date.now();
@@ -667,11 +655,11 @@ async function playBlob(session, blob, startOffset = 0) {
 
         const duration = Number(audio.duration);
         if (Number.isFinite(duration) && duration > 0) {
-            session.durations[session.currentIndex] = duration;
-            audio.currentTime = Math.max(0, Math.min(Number(startOffset) || 0, duration - 0.05));
+            audio.currentTime = toAudioTime(startOffset, sessionTimeline(session).durations[session.currentIndex], duration);
         }
         session.loadedSegmentIndex = session.currentIndex;
         updateAudioProgress(session);
+        await waitForResume(session);
         if (session.signal.aborted) throw session.signal.reason ?? new DOMException('Stopped', 'AbortError');
         await new Promise((resolve, reject) => {
             let settled = false;
@@ -695,22 +683,24 @@ async function playBlob(session, blob, startOffset = 0) {
             audio.addEventListener('ended', onEnded, { once: true });
             audio.addEventListener('error', onError, { once: true });
             session.signal.addEventListener('abort', onAbort, { once: true });
-            audio.play().catch(finish);
+            session.audioStarted = true;
+            setSessionPhase(session, 'playing', '正在播放 ' + session.kind);
+            playSessionAudio(session, error => {
+                if (activeSession === session) finish(error);
+            });
         });
     } finally {
         cleanupUrl();
     }
 }
 
-function resetProgress(player) {
-    if (!player) return;
+function setProgressDisplay(player, progress, current, total) {
     const track = player.querySelector('.tavo-st-progress');
-    const time = player.querySelector('.tavo-st-time');
-    if (track) {
-        track.value = '0';
-        track.style.setProperty('--tavo-progress', '0%');
-    }
-    if (time) time.textContent = '0:00 / 0:00';
+    track.value = String(progress);
+    player.querySelector('.tavo-st-rail').style.setProperty('--tavo-progress', progress + '%');
+    const time = formatTime(current) + ' / ' + formatTime(total);
+    player.querySelector('.tavo-st-time').textContent = time;
+    track.setAttribute('aria-valuetext', time);
 }
 
 function sessionTimeline(session) {
@@ -730,26 +720,28 @@ function isPlayerVisible(player) {
     return true;
 }
 
+function toAudioTime(offset, timelineDuration, audioDuration) {
+    return Math.min(offset / timelineDuration * audioDuration, Math.max(0, audioDuration - 0.05));
+}
+
 function updateAudioProgress(session) {
     const audio = session.audio;
     const player = session.player;
+    if (activeSession !== session || session.signal.aborted) return;
     if (!isPlayerVisible(player)) {
-        if (!session.stopped) stopSession('已离开聊天');
+        stopSession('已离开聊天');
         return;
     }
-    const currentSegment = session.segments[session.currentIndex];
-    if (currentSegment?.type !== 'pause' && Number.isFinite(audio.duration) && audio.duration > 0) {
-        session.durations[session.currentIndex] = audio.duration;
-    }
-    if (player.dataset.seeking === 'true') return;
+    if (session.paused || player.dataset.seeking === 'true') return;
     const timeline = sessionTimeline(session);
-    const position = timelinePosition(timeline, session.currentIndex,
-        currentSegment?.type === 'pause' ? session.pauseElapsed || 0 : audio.currentTime);
-    const track = player.querySelector('.tavo-st-progress');
-    const time = player.querySelector('.tavo-st-time');
-    track.value = String(position.progress);
-    track.style.setProperty('--tavo-progress', position.progress + '%');
-    time.textContent = formatTime(position.current) + ' / ' + formatTime(position.total);
+    let offset = session.segmentOffset;
+    if (session.segments[session.currentIndex]?.type === 'pause') {
+        offset = session.pauseElapsed;
+    } else if (session.loadedSegmentIndex === session.currentIndex && audio.duration > 0) {
+        offset = audio.currentTime / audio.duration * timeline.durations[session.currentIndex];
+    }
+    const position = timelinePosition(timeline, session.currentIndex, offset);
+    setProgressDisplay(player, position.progress, position.current, position.total);
 }
 
 function previewTimeline(player) {
@@ -758,9 +750,7 @@ function previewTimeline(player) {
     const track = player.querySelector('.tavo-st-progress');
     const timeline = sessionTimeline(session);
     const position = timelineTarget(timeline, Number(track.value));
-    track.style.setProperty('--tavo-progress', track.value + '%');
-    player.querySelector('.tavo-st-time').textContent =
-        formatTime(position.current) + ' / ' + formatTime(position.total);
+    setProgressDisplay(player, Number(track.value), position.current, position.total);
 }
 
 function seekPlayback(player) {
@@ -768,16 +758,19 @@ function seekPlayback(player) {
     if (!session || session.player !== player || session.signal.aborted) return;
     const track = player.querySelector('.tavo-st-progress');
     const timeline = sessionTimeline(session);
-    const target = timelineTarget(timeline, Number(track.value));
+    const progress = Number(track.value);
+    const target = timelineTarget(timeline, progress);
     const segment = session.segments[target.index];
-    if (target.index === session.currentIndex && session.loadedSegmentIndex === target.index &&
+    setProgressDisplay(player, progress, target.current, target.total);
+    setSessionPhase(session, 'loading', '正在跳转播放位置');
+    if (target.index === session.currentIndex && session.audioStarted && session.loadedSegmentIndex === target.index &&
         segment?.type !== 'pause' && !session.audio.ended &&
         Number.isFinite(session.audio.duration) && session.audio.duration > 0) {
-        session.audio.currentTime = Math.min(target.offset, Math.max(0, session.audio.duration - 0.05));
-        updateAudioProgress(session);
+        session.audio.currentTime = toAudioTime(target.offset, timeline.durations[target.index], session.audio.duration);
+        if (session.paused) togglePause(session);
         return;
     }
-    session.seekTarget = { index: target.index, offset: target.offset };
+    session.seekTarget = { index: target.index, offset: target.offset, timeline };
     session.controller.abort(new DOMException('Seeking', 'AbortError'));
 }
 
@@ -793,24 +786,35 @@ function stopSession(detail = '已停止') {
     for (const url of session.urls) URL.revokeObjectURL(url);
     session.urls.clear();
     for (const resume of session.resumeWaiters) resume();
-    updatePlayer(session.player, 'idle', detail, session.readyCount, session.total);
+    delete session.player.dataset.seeking;
+    setProgressDisplay(session.player, 0, 0, 0);
+    updatePlayer(session.player, 'idle', detail, 0, 0);
+}
+
+function playSessionAudio(session, fail) {
+    void session.audio.play().catch(error => {
+        // Pausing can interrupt a pending play() before the browser starts audio.
+        if (error.name !== 'AbortError') fail(error);
+    });
 }
 
 function togglePause(session) {
     session.paused = !session.paused;
     if (session.paused) {
         session.audio.pause();
-        updatePlayer(session.player, 'paused', '已暂停', session.readyCount, session.total);
+        setProgressDisplay(session.player, 0, 0, sessionTimeline(session).total);
+        renderSession(session);
     } else {
+        renderSession(session);
+        updateAudioProgress(session);
         for (const resume of session.resumeWaiters.splice(0)) resume();
-        if (session.audio.src && session.audio.paused) {
-            void session.audio.play().catch(error => notifyError(error.message));
-        }
-        updatePlayer(session.player, 'playing', '正在播放', session.readyCount, session.total);
+        if (session.audioStarted && !session.audio.ended) playSessionAudio(session, error => {
+            if (activeSession === session) session.controller.abort(error);
+        });
     }
 }
 
-async function startPlayback(player, messageId, forceRegenerate = false, startTarget = null, knownDurations = []) {
+async function startPlayback(player, messageId, forceRegenerate = false, startTarget = null) {
     const message = context.chat?.[Number(messageId)];
     const rawText = getActiveReplyText(message);
     if (!rawText.trim()) {
@@ -837,7 +841,7 @@ async function startPlayback(player, messageId, forceRegenerate = false, startTa
     } else if (activeSession) {
         stopSession();
     }
-    resetProgress(player);
+    if (!startTarget) setProgressDisplay(player, 0, 0, 0);
 
     const reading = extractReading(rawText);
     reading.readable = sanitizeReadableText(reading.clean);
@@ -861,10 +865,11 @@ async function startPlayback(player, messageId, forceRegenerate = false, startTa
         audio,
         segments,
         settings,
-        durations: segments.map((segment, index) => segment.type === 'pause'
-            ? segment.seconds : (Number(knownDurations[index]) || 0)),
         startTarget,
-        timeline: null,
+        timeline: startTarget?.timeline,
+        phase: 'loading',
+        title: startTarget ? '正在跳转播放位置' : '正在准备语音',
+        segmentLabel: playbackModeLabel(),
         controller,
         signal: controller.signal,
         stopped: false,
@@ -875,15 +880,24 @@ async function startPlayback(player, messageId, forceRegenerate = false, startTa
         total: segments.length,
         currentIndex: Math.min(startTarget?.index ?? 0, segments.length - 1),
         pauseElapsed: 0,
-        readingMode: reading.rows
-            ? (reading.matchesVisibleProse ? '结构朗读' : '结构朗读 · 正文含附加内容')
-            : (reading.hasStructureBlock ? '结构异常，正文兼容' : '普通文本')
+        segmentOffset: startTarget?.offset ?? 0,
+        audioStarted: false
     };
     activeSession = session;
     audio.addEventListener('timeupdate', () => updateAudioProgress(session));
-    audio.addEventListener('loadedmetadata', () => updateAudioProgress(session));
-    updatePlayer(player, 'loading', '正在准备音频', 0, segments.length);
-    resetProgress(player);
+    const markPlaying = () => {
+        if (!session.audioStarted || session.paused || audio.paused || audio.seeking) return;
+        setSessionPhase(session, 'playing', '正在播放 ' + session.kind);
+        updateAudioProgress(session);
+    };
+    audio.addEventListener('playing', markPlaying);
+    audio.addEventListener('seeked', markPlaying);
+    audio.addEventListener('waiting', () => {
+        if (session.audioStarted && !session.paused && !audio.seeking && !audio.ended) {
+            setSessionPhase(session, 'loading', '正在衔接下一段');
+        }
+    });
+    renderSession(session);
 
     let seekRestart = null;
     try {
@@ -911,44 +925,38 @@ async function startPlayback(player, messageId, forceRegenerate = false, startTa
             async (blob, segment, index) => {
                 if (session.stopped || activeSession !== session) throw new DOMException('Stopped', 'AbortError');
                 session.currentIndex = index;
-                session.pauseElapsed = 0;
                 const offset = session.startTarget?.index === index ? session.startTarget.offset : 0;
                 session.startTarget = null;
-                const label = (segment.kind === 'narrator' ? '旁白' : '对白') + ' ' + (index + 1) + '/' + segments.length +
-                    (session.readingMode === '结构朗读' ? '' : ' · ' + session.readingMode);
-                updatePlayer(player, session.paused ? 'paused' : 'playing', label, session.readyCount, segments.length);
-                if (segment.type === 'pause') await playPauseSegment(session, segment.seconds, offset);
-                else await playBlob(session, blob, offset);
+                session.pauseElapsed = offset;
+                session.segmentOffset = offset;
+                session.kind = segment.kind === 'narrator' ? '旁白' : '对话';
+                session.segmentLabel = session.kind + ' ' + (index + 1) + '/' + segments.length;
+                await waitForResume(session);
+                if (segment.type === 'pause') {
+                    setSessionPhase(session, 'playing', '正在播放 ' + session.kind);
+                    await playPauseSegment(session, segment.seconds, offset);
+                } else {
+                    await playBlob(session, blob, offset);
+                }
+                session.audioStarted = false;
                 updateAudioProgress(session);
+                if (index + 1 < segments.length) setSessionPhase(session, 'loading', '正在衔接下一段');
             },
             {
                 concurrency: 10,
                 startIndex: session.currentIndex,
                 signal: controller.signal,
                 onError: error => controller.abort(error),
-                onReady: (index, blob) => {
-                    if (activeSession !== session || session.stopped) return;
-                    session.readyCount++;
-                    if (typeof Blob !== 'undefined' && blob instanceof Blob && session.segments[index]?.type !== 'pause') {
-                        void measureAudioDuration(blob, session.signal).then(duration => {
-                            if (duration > 0 && activeSession === session) {
-                                session.durations[index] = duration;
-                                updateAudioProgress(session);
-                            }
-                        });
-                    }
-                    const detail = player.isConnected
-                        ? (player.querySelector('.tavo-st-detail')?.textContent || '正在加载后续音频')
-                        : '正在加载后续音频';
-                    updatePlayer(player, session.paused ? 'paused' : (audio.paused ? 'loading' : 'playing'),
-                        detail, session.readyCount, segments.length);
+                onReady: () => {
+                    if (activeSession !== session || session.signal.aborted) return;
+                    updateReadyCount(player, ++session.readyCount, segments.length);
                 }
             }
         );
         if (activeSession === session) {
             activeSession = null;
-            updatePlayer(player, 'idle', '播放完成', session.readyCount, segments.length);
-            resetProgress(player);
+            setProgressDisplay(player, 0, 0, 0);
+            updatePlayer(player, 'idle', '播放完成', 0, 0);
         }
     } catch (error) {
         if (activeSession === session) {
@@ -975,7 +983,7 @@ async function startPlayback(player, messageId, forceRegenerate = false, startTa
         for (const url of session.urls) URL.revokeObjectURL(url);
         session.urls.clear();
     }
-    if (seekRestart) await startPlayback(player, messageId, forceRegenerate, seekRestart, session.durations);
+    if (seekRestart) await startPlayback(player, messageId, forceRegenerate, seekRestart);
 }
 
 function handlePlayerAction(event) {
