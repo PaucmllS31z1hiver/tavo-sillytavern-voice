@@ -12,6 +12,8 @@ role_name 只能使用：旁白、主角、女主一、女主二、女主三、�
 
 每条 minimax_segments 至少有一个 text 片段。text 片段必须包含 emotion；没有明确情绪时写 null。sound 和 pause 不进入 text_content。所有 text.text 按顺序拼接后，必须和对应 text_content 完全一致。所有记录的 text_content 按顺序拼接后，必须和正文完全一致，只允许去掉直接对白最外层引号，以及去掉不朗读的成对 Markdown 加粗标记 **；标题文字、标点和换行必须保留。
 
+【同角色连续内容合并】同一个 role_name 的连续正文必须合并：同一角色连续多行、连续多个句子，只能生成同一条记录；同一角色同一情绪下的连续 text 必须合并成一个 text 片段，text_content 要原样保留所有换行和标点。只有角色变化、情绪变化、明确的 pause，或明确的声音/动作边界才能新开记录或片段。不得因为换行、句号或句子数量，把同一角色拆成多条记录或多次语音合成。
+
 【正文、排版和结构块的边界】
 朗读结构块只是给播放器读取的机器数据，不能反过来修改正常正文、剧情、人设、语气或角色关系。先正常完成正文，再在正文末尾追加结构块；不要把 role_name、emotion、sound、pause、JSON、HTML 注释或“旁白/女主/男NPC”等内部字段写进正文。正文里的 Markdown 加粗只属于显示排版：如果正文是 **【时间地点】**，结构 JSON 的 text_content 和 text.text 应写成 【时间地点】，不能把两侧的 ** 当作要朗读的文字；除去这对加粗标记后，正文中的所有可见文字、标点和换行都必须原样保留。
 
@@ -20,7 +22,7 @@ emotion 只能是 happy、sad、angry、fearful、disgusted、surprised、calm �
 声音标签只能从下面这 19 个插件支持的标签中选择：
 emm、laughs、chuckle、humming、coughs、clear-throat、breath、inhale、exhale、pant、sighs、gasps、sniffs、groans、burps、lip-smacking、sneezes、snorts、hissing。
 
-请结合已经完成的正文、对白含义、人物状态和场景气氛，自然选择合适的声音标签，让朗读更有语气变化。不要因为正文没有明确写出“笑了”“咳嗽”“叹气”等动作，就把所有对白都处理成没有声音变化；轻松打趣可以用 chuckle，明显笑声可以用 laughs，无奈或释然可以用 sighs，尴尬开口可以用 clear-throat，需要轻微呼吸感时可以用 breath、inhale 或 exhale，惊讶反应可以用 gasps。标签只影响朗读表现，不得反过来修改正文、补写动作、改变人设或增加角色。不要为了凑数量强行添加，也不要每句话固定添加。
+【对白语气标签】对白应结合正文、人物状态和上下文主动选择合适的声音标签，并鼓励多用，让朗读有明显变化。“鼓励多用”不是每句固定添加，而是只要上下文已经提供了合理依据，就优先考虑添加合适标签；正文没有直接写“笑了”也不代表不能使用语气。例如上下文明显欢快、人物正在打趣、气氛轻松时，可以使用 chuckle 或 laughs；无奈、释然、疲惫时可以使用 sighs；尴尬开口时可以使用 clear-throat；紧张或急促时可以使用 breath、inhale、exhale 或 pant；惊讶时可以使用 gasps；冷淡嘲讽时可以使用 snorts 或 hissing。明确出现笑了、笑出声、哈哈哈、咳嗽、清嗓、叹气、喘气、吸气、倒吸气、哼唱、冷哼、惊呼等实际声音时，必须在对应对白附近添加匹配标签。声音标签只放在对白的 minimax_segments 中，不得写进 text，不得修改正文，不得让旁白音色发出角色声音。标签只影响朗读表现，不得反过来修改正文、补写动作、改变人设或增加角色。
 
 旁白永远只保留普通 text；对白可以根据场景自然使用上述标签，不要求旁白提前写出对应动作。声音标签不等于 emotion，不要因为使用 laughs 或 chuckle 就自动设置 happy，也不要因为使用 sighs 就自动设置 sad。停顿只在原文明确要求额外停顿时添加；不得为了丰富效果凭空添加 pause。
 
@@ -70,3 +72,16 @@ emm、laughs、chuckle、humming、coughs、clear-throat、breath、inhale、exh
 [{"role_name":"旁白","text_content":"【2026.9.8 周二·中午12点15分·湿地公园林荫道】\n\n她抬眼：","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"【2026.9.8 周二·中午12点15分·湿地公园林荫道】\n\n她抬眼：","emotion":null}]},{"role_name":"女主一","text_content":"嗯。","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"嗯。","emotion":null}]}]
 {{CLOSE_MARKER}}
 说明：JSON 字符串中用 \n 表示一次换行，用 \n\n 表示空一行；不要写成 \\n（那会变成反斜杠和字母 n），也不要在 JSON 字符串内部直接换行。这个例子不把标题两侧的 ** 写进 JSON；【时间地点】、空行、她抬眼：和嗯。都必须保留。对白最外层的“”只作为说话边界，可以不写进对应 text_content。
+
+【示例七：同一角色连续换行必须合并】
+正文：
+旁白第一句。
+旁白第二句。
+
+苏倩连续说：“你好。”
+“我很好。”
+结构块：
+{{OPEN_MARKER}}
+[{"role_name":"旁白","text_content":"旁白第一句。\n旁白第二句。\n\n苏倩连续说：","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"旁白第一句。\n旁白第二句。\n\n苏倩连续说：","emotion":null}]},{"role_name":"女主一","text_content":"你好。\n我很好。","emotion_name":"","strength_name":"","minimax_segments":[{"type":"text","text":"你好。\n我很好。","emotion":null}]}]
+{{CLOSE_MARKER}}
+说明：旁白的两行合并成一条旁白记录、一个 text 片段；苏倩明确连续说的两句也合并成一条女主一记录、一个 text 片段。不能把每行、每句或每个换行分别生成一条记录。

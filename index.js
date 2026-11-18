@@ -151,6 +151,9 @@ async function loadPromptDefaults() {
     }
 
     migratePromptSettings(settings, storedSettings, promptDefaults, DEFAULT_PROMPT);
+    // Keep the migrated version in the live settings object so later saves do not
+    // re-append rules that the user has deliberately edited or removed.
+    storedSettings.promptMigrationVersion = settings.promptMigrationVersion;
     context.extensionSettings[MODULE_NAME] = settings;
     context.saveSettingsDebounced();
 }
@@ -699,16 +702,47 @@ async function playBlob(session, blob, startOffset = 0) {
     }
 }
 
+function resetProgress(player) {
+    if (!player) return;
+    const track = player.querySelector('.tavo-st-progress');
+    const time = player.querySelector('.tavo-st-time');
+    if (track) {
+        track.value = '0';
+        track.style.setProperty('--tavo-progress', '0%');
+    }
+    if (time) time.textContent = '0:00 / 0:00';
+}
+
+function sessionTimeline(session) {
+    // Freeze duration weights when playback starts. As later requests finish, the
+    // total length and percentage must not shift underneath the user's thumb.
+    if (!session.timeline) session.timeline = buildTimeline(session.segments, [], session.settings);
+    return session.timeline;
+}
+
+function isPlayerVisible(player) {
+    if (!player?.isConnected || player.getClientRects().length === 0) return false;
+    for (let node = player; node && node !== document.body; node = node.parentElement) {
+        if (node.hidden || node.getAttribute('aria-hidden') === 'true') return false;
+        const style = getComputedStyle(node);
+        if (style.display === 'none' || style.visibility === 'hidden' || style.contentVisibility === 'hidden') return false;
+    }
+    return true;
+}
+
 function updateAudioProgress(session) {
     const audio = session.audio;
     const player = session.player;
-    if (!player?.isConnected) return;
+    if (!isPlayerVisible(player)) {
+        if (!session.stopped) stopSession('已离开聊天');
+        return;
+    }
     const currentSegment = session.segments[session.currentIndex];
     if (currentSegment?.type !== 'pause' && Number.isFinite(audio.duration) && audio.duration > 0) {
         session.durations[session.currentIndex] = audio.duration;
     }
     if (player.dataset.seeking === 'true') return;
-    const timeline = buildTimeline(session.segments, session.durations, session.settings);
+    const timeline = sessionTimeline(session);
     const position = timelinePosition(timeline, session.currentIndex,
         currentSegment?.type === 'pause' ? session.pauseElapsed || 0 : audio.currentTime);
     const track = player.querySelector('.tavo-st-progress');
@@ -722,7 +756,7 @@ function previewTimeline(player) {
     const session = activeSession;
     if (!session || session.player !== player) return;
     const track = player.querySelector('.tavo-st-progress');
-    const timeline = buildTimeline(session.segments, session.durations, session.settings);
+    const timeline = sessionTimeline(session);
     const position = timelineTarget(timeline, Number(track.value));
     track.style.setProperty('--tavo-progress', track.value + '%');
     player.querySelector('.tavo-st-time').textContent =
@@ -733,7 +767,7 @@ function seekPlayback(player) {
     const session = activeSession;
     if (!session || session.player !== player || session.signal.aborted) return;
     const track = player.querySelector('.tavo-st-progress');
-    const timeline = buildTimeline(session.segments, session.durations, session.settings);
+    const timeline = sessionTimeline(session);
     const target = timelineTarget(timeline, Number(track.value));
     const segment = session.segments[target.index];
     if (target.index === session.currentIndex && session.loadedSegmentIndex === target.index &&
@@ -793,7 +827,17 @@ async function startPlayback(player, messageId, forceRegenerate = false, startTa
     }
 
     unlockAudio();
-    if (activeSession) stopSession();
+    if (activeSession?.player === player) {
+        // Resuming a paused playback continues from its position.
+        if (activeSession.paused) {
+            togglePause(activeSession);
+            return;
+        }
+        stopSession();
+    } else if (activeSession) {
+        stopSession();
+    }
+    resetProgress(player);
 
     const reading = extractReading(rawText);
     reading.readable = sanitizeReadableText(reading.clean);
@@ -820,6 +864,7 @@ async function startPlayback(player, messageId, forceRegenerate = false, startTa
         durations: segments.map((segment, index) => segment.type === 'pause'
             ? segment.seconds : (Number(knownDurations[index]) || 0)),
         startTarget,
+        timeline: null,
         controller,
         signal: controller.signal,
         stopped: false,
@@ -838,7 +883,7 @@ async function startPlayback(player, messageId, forceRegenerate = false, startTa
     audio.addEventListener('timeupdate', () => updateAudioProgress(session));
     audio.addEventListener('loadedmetadata', () => updateAudioProgress(session));
     updatePlayer(player, 'loading', '正在准备音频', 0, segments.length);
-    updateAudioProgress(session);
+    resetProgress(player);
 
     let seekRestart = null;
     try {
@@ -882,9 +927,8 @@ async function startPlayback(player, messageId, forceRegenerate = false, startTa
                 signal: controller.signal,
                 onError: error => controller.abort(error),
                 onReady: (index, blob) => {
-                    if (activeSession !== session) return;
+                    if (activeSession !== session || session.stopped) return;
                     session.readyCount++;
-                    updateAudioProgress(session);
                     if (typeof Blob !== 'undefined' && blob instanceof Blob && session.segments[index]?.type !== 'pause') {
                         void measureAudioDuration(blob, session.signal).then(duration => {
                             if (duration > 0 && activeSession === session) {
@@ -893,7 +937,9 @@ async function startPlayback(player, messageId, forceRegenerate = false, startTa
                             }
                         });
                     }
-                    const detail = player.querySelector('.tavo-st-detail')?.textContent || '正在加载后续音频';
+                    const detail = player.isConnected
+                        ? (player.querySelector('.tavo-st-detail')?.textContent || '正在加载后续音频')
+                        : '正在加载后续音频';
                     updatePlayer(player, session.paused ? 'paused' : (audio.paused ? 'loading' : 'playing'),
                         detail, session.readyCount, segments.length);
                 }
@@ -902,9 +948,7 @@ async function startPlayback(player, messageId, forceRegenerate = false, startTa
         if (activeSession === session) {
             activeSession = null;
             updatePlayer(player, 'idle', '播放完成', session.readyCount, segments.length);
-            player.querySelector('.tavo-st-time').textContent = '0:00 / 0:00';
-            player.querySelector('.tavo-st-progress').value = '0';
-            player.querySelector('.tavo-st-progress').style.setProperty('--tavo-progress', '0%');
+            resetProgress(player);
         }
     } catch (error) {
         if (activeSession === session) {
@@ -1002,6 +1046,38 @@ async function initialize() {
         });
     }
     document.addEventListener('click', handlePlayerAction);
+
+    const stopWhenLeaving = () => {
+        if (activeSession) stopSession('已停止');
+    };
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') stopWhenLeaving();
+    });
+    window.addEventListener('pagehide', stopWhenLeaving);
+    window.addEventListener('beforeunload', stopWhenLeaving);
+    window.addEventListener('popstate', stopWhenLeaving);
+    if (eventTypes.CHAT_DELETED || eventTypes.GROUP_CHAT_DELETED) {
+        const handleChatDeleted = () => {
+            if (activeSession) stopSession('聊天已关闭');
+            setTimeout(refreshAllPlayers, 0);
+        };
+        if (eventTypes.CHAT_DELETED) context.eventSource.on(eventTypes.CHAT_DELETED, handleChatDeleted);
+        if (eventTypes.GROUP_CHAT_DELETED) context.eventSource.on(eventTypes.GROUP_CHAT_DELETED, handleChatDeleted);
+    }
+
+    // TauriTavern can hide the chat view without firing CHAT_CHANGED or a document
+    // visibility change. If the active player leaves the DOM, audio must stop.
+    const lifecycleObserver = new MutationObserver(() => {
+        const player = activeSession?.player;
+        if (player && !isPlayerVisible(player)) stopSession('已离开聊天');
+    });
+    lifecycleObserver.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'style', 'hidden', 'aria-hidden']
+    });
+
     refreshAllPlayers();
 }
 

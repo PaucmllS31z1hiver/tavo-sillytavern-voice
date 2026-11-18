@@ -1,6 +1,9 @@
 export const MODULE_NAME = 'tavo_voice_player';
 export const PROMPT_KEY = 'tavo_voice_player_reading_rules';
-export const VERSION = '0.3.0';
+export const VERSION = '0.3.2';
+
+export const SAME_ROLE_PROMPT_RULE = '【同角色连续内容合并】同一个 role_name 的连续正文必须合并：同一角色连续多行、连续多个句子，只能生成同一条记录；同一角色同一情绪下的连续 text 必须合并成一个 text 片段，text_content 要原样保留所有换行和标点。只有角色变化、情绪变化、明确的 pause，或明确的声音/动作边界才能新开记录或片段。不得因为换行、句号或句子数量，把同一角色拆成多条记录或多次语音合成。';
+export const DIALOGUE_TONE_PROMPT_RULE = '【对白语气标签】对白应结合正文、人物状态和上下文主动选择合适的声音标签，并鼓励多用，让朗读有明显变化。“鼓励多用”不是每句固定添加，而是只要上下文已经提供了合理依据，就优先考虑添加合适标签；正文没有直接写“笑了”也不代表不能使用语气。例如上下文明显欢快、人物正在打趣、气氛轻松时，可以使用 chuckle 或 laughs；无奈、释然、疲惫时可以使用 sighs；尴尬开口时可以使用 clear-throat；紧张或急促时可以使用 breath、inhale、exhale 或 pant；惊讶时可以使用 gasps；冷淡嘲讽时可以使用 snorts 或 hissing。明确出现笑了、笑出声、哈哈哈、咳嗽、清嗓、叹气、喘气、吸气、倒吸气、哼唱、冷哼、惊呼等实际声音时，必须在对应对白附近添加匹配标签。声音标签只放在对白的 minimax_segments 中，不得写进 text，不得修改正文，不得让旁白音色发出角色声音。声音标签不等于 emotion，不能因为使用 laughs 或 chuckle 就自动设置 happy，也不能因为使用 sighs 就自动设置 sad。没有场景依据时不添加，同一声音事件不重复添加。';
 
 export const DEFAULT_PROMPT = [
     '【朗读结构规则】',
@@ -9,6 +12,8 @@ export const DEFAULT_PROMPT = [
     '每条记录包含 role_name、text_content、emotion_name、strength_name、minimax_segments。role_name 只能是旁白、主角、女主一、女主二、女主三、女主四、男NPC一、男NPC二、女NPC一、女NPC二、未知角色。strength_name 固定为空字符串。',
     '结合角色卡、用户人设和聊天上下文判断说话人；不要默认把用户当成主角。主角姓名标为主角；女主姓名对应女主一，有多位女主时按角色卡身份对应女主二至女主四。NPC 必须判断性别：男性使用男NPC一或男NPC二，女性使用女NPC一或女NPC二，禁止使用无性别的 NPC一、NPC二。第五位及以后的女主使用女主四；第三位及以后的男性 NPC 使用男NPC二；第三位及以后的女性 NPC 使用女NPC二。',
     '旁白和对白按原文顺序拆开。text_content 与该条所有 text 片段拼接结果必须完全一致；所有 text_content 拼接后必须保留正文全部文字和顺序，仅可去掉对白最外层引号。不要输出空记录。',
+    SAME_ROLE_PROMPT_RULE,
+    DIALOGUE_TONE_PROMPT_RULE,
     '每个 minimax_segments 片段为 text、sound 或 pause。text 必须包含 emotion，使用 happy、sad、angry、fearful、disgusted、surprised、calm 或 null。sound 标签限于 emm、laughs、chuckle、humming、coughs、clear-throat、breath、inhale、exhale、pant、sighs、gasps、sniffs、groans、burps、lip-smacking、sneezes、snorts、hissing。pause 只用于正文明确要求的句中停顿。',
     '旁白只能使用普通 text，不能添加 emotion、sound 或 pause。角色情绪和声音只属于对应对白；没有明确依据时使用 null，不要从上一句继承。',
     '排除代码、HTML、状态栏、变量更新、Analysis、UpdateVariable、StatusPlaceHolderImpl 和 [[INSIDE]] 控制块。结构块之外不要输出朗读规则或自检说明。',
@@ -64,8 +69,19 @@ export function migratePromptSettings(settings, stored, defaults, legacyDefault)
         prompt = defaultPrompt;
     }
 
+    const previousPromptVersion = Number(source.promptMigrationVersion) || 0;
     settings.prompt = prompt || defaultPrompt;
-    settings.promptMigrationVersion = 3;
+    const additions = [];
+    if (previousPromptVersion < 4 && !settings.prompt.includes('【同角色连续内容合并】')) {
+        additions.push(SAME_ROLE_PROMPT_RULE);
+    }
+    if (previousPromptVersion < 5 && !settings.prompt.includes('【对白语气标签】')) {
+        additions.push(DIALOGUE_TONE_PROMPT_RULE);
+    }
+    if (additions.length) {
+        settings.prompt = [settings.prompt, ...additions].filter(Boolean).join('\n\n');
+    }
+    settings.promptMigrationVersion = 5;
     return settings;
 }
 
@@ -450,9 +466,10 @@ function getRoleVoice(role, settings) {
     return legacyDialogue;
 }
 
-function textChunksForRow(row) {
+function textChunksForRow(row, joinSoundWithPrevious = false) {
     if (!Array.isArray(row.minimax_segments)) {
-        return splitSentences(row.text_content).map(text => ({ type: 'text', text, emotion: null }));
+        const text = String(row.text_content ?? '');
+        return text.trim() ? [{ type: 'text', text, emotion: null }] : [];
     }
     const chunks = [];
     let current = null;
@@ -466,8 +483,13 @@ function textChunksForRow(row) {
             }
             chunks.push({ type: 'pause', seconds: part.seconds });
         } else if (part.type === 'sound') {
+            // A sound row directly after narration is performed at the start of
+            // that narration segment, not in a separate request that would add a gap.
             if (current) current.text += '(' + part.tag + ')';
-            else pendingSound += '(' + part.tag + ')';
+            else if (joinSoundWithPrevious && chunks.length && chunks[chunks.length - 1].type === 'text') {
+                chunks[chunks.length - 1].text += '(' + part.tag + ')';
+                current = chunks[chunks.length - 1];
+            } else pendingSound += '(' + part.tag + ')';
         } else if (part.type === 'text') {
             if (current && current.emotion === part.emotion) {
                 current.text += pendingSound + part.text;
@@ -481,10 +503,7 @@ function textChunksForRow(row) {
     if (pendingSound && chunks.length && chunks[chunks.length - 1].type === 'text') {
         chunks[chunks.length - 1].text += pendingSound;
     }
-    return chunks.flatMap(chunk => {
-        if (chunk.type === 'pause') return [chunk];
-        return splitSentences(chunk.text).map(text => ({ ...chunk, text }));
-    });
+    return chunks;
 }
 
 export function buildAudioSegments(reading, settings) {
@@ -493,28 +512,48 @@ export function buildAudioSegments(reading, settings) {
     if (!Array.isArray(rows) || !rows.length) rows = fallbackRows(text);
 
     const segments = [];
-    for (const row of rows) {
+    rows.forEach((row, rowIndex) => {
         const kind = roleKind(row.role_name);
-        if (settings.playbackMode === 'narrator' && kind !== 'narrator') continue;
-        if (settings.playbackMode === 'dialogue' && kind !== 'dialogue') continue;
-        const voice = getRoleVoice(row.role_name, settings);
-        for (const chunk of textChunksForRow(row)) {
+        if (settings.playbackMode === 'narrator' && kind !== 'narrator') return;
+        if (settings.playbackMode === 'dialogue' && kind !== 'dialogue') return;
+        const voice = getRoleVoice(row.role_name, settings) ||
+            settings.voices?.femaleNpc2 || settings.voices?.narrator || settings.dialogueVoice;
+        const speed = kind === 'narrator' ? settings.speed : settings.dialogueSpeed;
+        for (const chunk of textChunksForRow(row, rowIndex > 0)) {
             if (chunk.type === 'pause') {
-                segments.push({ type: 'pause', seconds: chunk.seconds, kind, role: row.role_name });
+                segments.push({ type: 'pause', seconds: chunk.seconds, kind, role: row.role_name, sourceRow: rowIndex });
                 continue;
             }
             if (!chunk.text.trim()) continue;
-            segments.push({
+            const segment = {
                 type: 'audio',
                 text: chunk.text,
                 kind,
                 role: row.role_name,
-                voice: voice || settings.voices?.femaleNpc2 || settings.voices?.narrator || settings.dialogueVoice,
-                speed: kind === 'narrator' ? settings.speed : settings.dialogueSpeed,
-                emotion: chunk.emotion || null
-            });
+                voice,
+                speed,
+                emotion: chunk.emotion || null,
+                sourceRow: rowIndex,
+                forceBreak: false
+            };
+            const previous = segments[segments.length - 1];
+            const canJoin = previous?.type === 'audio' &&
+                previous.sourceRow === rowIndex - 1 &&
+                previous.role === segment.role &&
+                previous.kind === segment.kind &&
+                previous.voice === segment.voice &&
+                previous.speed === segment.speed &&
+                previous.emotion === segment.emotion &&
+                !previous.forceBreak &&
+                !segment.forceBreak;
+            if (canJoin) {
+                previous.text += segment.text;
+                previous.sourceRow = rowIndex;
+            } else {
+                segments.push(segment);
+            }
         }
-    }
+    });
     return segments;
 }
 
